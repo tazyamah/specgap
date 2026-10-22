@@ -1,0 +1,30 @@
+# 注文の状態遷移と、返金処理の失敗の扱い（修正前）。
+spec: 注文（修正前）
+
+machines:
+  - id: 注文
+    states: [受付, 支払済み, 発送済み, 完了, キャンセル済み]
+    events: [支払, 発送, 到着, キャンセル]
+    initial: 受付
+    final: [完了, キャンセル済み]
+    transitions:
+      - {from: 受付, on: 支払, to: 支払済み}
+      - {from: 受付, on: キャンセル, to: キャンセル済み}
+      - {from: 支払済み, on: 発送, to: 発送済み}
+      - {from: 支払済み, on: キャンセル, to: キャンセル済み}
+      - {from: 発送済み, on: 到着, to: 完了}
+    rejects:
+      - {from: 受付, on: [発送, 到着], reason: 支払前}
+      - {from: 支払済み, on: [支払, 到着], reason: 二重支払・未発送}
+      - {from: [完了, キャンセル済み], on: [支払, 発送, 到着, キャンセル], reason: 終了済み}
+
+effects:
+  決済API:
+    failures: [タイムアウト, 拒否, 通信エラー]
+
+operations:
+  - id: 返金を実行
+    uses: [決済API]
+    on_failure:
+      決済API.タイムアウト: 照会してから再試行し、未確定なら保留にする
+      決済API.拒否: 返金失敗として記録し、担当者に通知する
