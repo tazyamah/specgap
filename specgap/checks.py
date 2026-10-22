@@ -29,6 +29,7 @@ class Finding:
     detail: str = ""
     question: str = ""
     example: dict[str, str] = field(default_factory=dict)
+    ref: str = ""  # 関係する表・状態機械・操作の id
 
 
 @dataclass
@@ -69,6 +70,7 @@ class _Checker:
             ("性質の矛盾と決定表との整合", self.check_ensures),
             ("状態と出来事の網羅", self.check_machines),
             ("失敗の扱いの網羅", self.check_failures),
+            ("ユースケースと画面の整合", self.check_usecases),
             ("入力項目の使用", self.check_unused_inputs),
         ]
         for name, step in steps:
@@ -153,7 +155,7 @@ class _Checker:
             self.report.add(
                 ERROR, "網羅", f"表「{t.id}」のどの行にも当たらない入力があります",
                 question=f"{self._fmt(ex)} のとき、どうしますか",
-                example=ex,
+                example=ex, ref=t.id,
             )
 
     def _overlaps(self, t: Table, conds: list[Compiled]):
@@ -173,7 +175,7 @@ class _Checker:
                     ERROR, "排他", f"表「{t.id}」の{ri.index}行目と{rj.index}行目の両方に当たる入力があります",
                     detail=note,
                     question=f"{self._fmt(ex)} のとき、どちらの行を使いますか",
-                    example=ex,
+                    example=ex, ref=t.id,
                 )
 
     def _same_results(self, t: Table, a, b, region) -> bool:
@@ -349,6 +351,63 @@ class _Checker:
                     self.report.add(
                         WARNING, "失敗", f"操作「{op.id}」の失敗の扱い {key} は、起こり得ない失敗に対するものです",
                     )
+
+    # ---- ユースケースと画面 ----
+
+    def check_usecases(self):
+        spec = self.spec
+        known = {t.id for t in spec.tables} | {m.id for m in spec.machines} | {o.id for o in spec.operations}
+        ucs = {u.id for u in spec.usecases}
+        for u in spec.usecases:
+            if u.actor not in spec.actors:
+                self.report.add(ERROR, "ユースケース", f"ユースケース「{u.id}」のアクター {u.actor or '（なし）'} が定義されていません",
+                                question=f"「{u.id}」は誰が行いますか")
+            for ref in u.uses:
+                if ref not in known:
+                    self.report.add(ERROR, "ユースケース", f"ユースケース「{u.id}」が未定義の {ref} を参照しています")
+        for actor in spec.actors:
+            if not any(u.actor == actor for u in spec.usecases):
+                self.report.add(WARNING, "ユースケース", f"アクター {actor} が行うユースケースがありません",
+                                question=f"{actor} は何をする人ですか。不要なら消してよいですか")
+        if spec.usecases:
+            used = {r for u in spec.usecases for r in u.uses}
+            for op in spec.operations:
+                if op.id not in used:
+                    self.report.add(WARNING, "ユースケース", f"操作「{op.id}」を行うユースケースがありません",
+                                    question=f"「{op.id}」は誰がどの場面で行いますか")
+
+        reached_ucs = set()
+        for f in spec.screen_flows:
+            for st in f.steps:
+                if st.usecase:
+                    reached_ucs.add(st.usecase)
+                    if st.usecase not in ucs:
+                        self.report.add(ERROR, "画面", f"画面の流れ「{f.id}」の操作「{st.action}」が未定義のユースケース {st.usecase} を指しています")
+            seen = set()
+            for st in f.steps:
+                key = (st.src, st.action)
+                if key in seen:
+                    self.report.add(ERROR, "画面", f"画面の流れ「{f.id}」で、{st.src} の「{st.action}」の行き先が複数あります",
+                                    question="どの画面に進みますか")
+                seen.add(key)
+            reach, frontier = {f.start}, [f.start]
+            while frontier:
+                cur = frontier.pop()
+                for st in f.steps:
+                    if st.src == cur and st.dst not in reach:
+                        reach.add(st.dst)
+                        frontier.append(st.dst)
+            for name in f.screens:
+                if name not in reach:
+                    self.report.add(WARNING, "画面", f"画面の流れ「{f.id}」の画面 {name} には、最初の画面からたどり着けません")
+                if name not in f.final and not any(st.src == name for st in f.steps):
+                    self.report.add(WARNING, "画面", f"画面の流れ「{f.id}」の画面 {name} から先へ進む操作も戻る操作もありません",
+                                    question=f"{name} を見たあと、利用者はどこへ行けますか")
+        if spec.screen_flows:
+            for u in spec.usecases:
+                if u.id not in reached_ucs:
+                    self.report.add(WARNING, "画面", f"ユースケース「{u.id}」を始める画面上の操作がありません",
+                                    question=f"「{u.id}」はどの画面から始めますか（画面を持たない処理なら、その旨を確認してください）")
 
     # ---- 入力の使用 ----
 

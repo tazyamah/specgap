@@ -1,0 +1,113 @@
+# 通販の返品（修正後）。検査器の問いに答えて漏れを埋め、全額返金の期間を14日に短くした版。
+spec: 通販の返品（修正後）
+
+actors:
+  購入者: 商品を買った人
+  サポート担当: 返品の問い合わせに対応する社員
+
+usecases:
+  - id: 注文する
+    actor: 購入者
+    uses: [注文]
+  - id: 返品を申し込む
+    actor: 購入者
+    description: 届いた商品を返品し、返金を受ける
+    uses: [返金額の決定, 返金方法の決定, 注文]
+  - id: 返金状況を確認する
+    actor: 購入者
+  - id: 返金を承認する
+    actor: サポート担当
+    uses: [返金を実行]
+
+screens:
+  - id: 購入者の画面
+    start: 商品一覧
+    transitions:
+      - {from: 商品一覧, action: 購入する, to: 注文確認, usecase: 注文する}
+      - {from: 注文確認, action: 確定する, to: 注文一覧}
+      - {from: 注文確認, action: やめる, to: 商品一覧}
+      - {from: 注文一覧, action: 注文を選ぶ, to: 注文詳細}
+      - {from: 注文詳細, action: 戻る, to: 注文一覧}
+      - {from: 注文詳細, action: 返品を申し込む, to: 返品申込, usecase: 返品を申し込む}
+      - {from: 返品申込, action: 申し込む, to: 申込完了}
+      - {from: 申込完了, action: 返金状況を見る, to: 返金状況, usecase: 返金状況を確認する}
+      - {from: 返金状況, action: 注文一覧へ, to: 注文一覧}
+  - id: サポート担当の画面
+    start: 返品依頼一覧
+    final: [承認完了]
+    transitions:
+      - {from: 返品依頼一覧, action: 依頼を開く, to: 返品依頼詳細}
+      - {from: 返品依頼詳細, action: 返金を承認する, to: 承認完了, usecase: 返金を承認する}
+
+enums:
+  商品状態: [未開封, 開封済み]
+  支払方法: [カード, ポイント, 銀行振込]
+  返金方法: [元の支払方法, ポイント付与]
+
+inputs:
+  経過日数: {type: int, min: 0, max: 3650, description: 購入日からの経過日数}
+  商品状態: {type: 商品状態}
+  支払額: {type: int, min: 1, max: 1000000, example: 10000, description: 円}
+  支払方法: {type: 支払方法}
+
+outputs:
+  返金額: {type: int, min: 0, description: 円}
+  返金方法: {type: 返金方法}
+
+tables:
+  - id: 返金額の決定
+    rows:
+      - when: 経過日数 <= 14 and 商品状態 == 未開封
+        then: {返金額: 支払額}
+      - when: 経過日数 <= 30 and 商品状態 == 開封済み
+        then: {返金額: 支払額 // 2}
+      - when: 14 < 経過日数 <= 30 and 商品状態 == 未開封
+        then: {返金額: 支払額 // 2}
+      - when: 経過日数 > 30
+        then: {返金額: 0}
+
+  - id: 返金方法の決定
+    rows:
+      - when: 支払方法 == カード
+        then: {返金方法: 元の支払方法}
+      - when: 支払方法 == ポイント
+        then: {返金方法: ポイント付与}
+      - when: 支払方法 == 銀行振込
+        then: {返金方法: unspecified}
+
+ensures:
+  - id: 返金は支払額を超えない
+    expr: 0 <= 返金額 <= 支払額
+
+machines:
+  - id: 注文
+    states: [受付, 支払済み, 発送済み, 返品待ち, 完了, キャンセル済み]
+    events: [支払, 発送, 到着, キャンセル]
+    initial: 受付
+    final: [完了, キャンセル済み]
+    transitions:
+      - {from: 受付, on: 支払, to: 支払済み}
+      - {from: 受付, on: キャンセル, to: キャンセル済み}
+      - {from: 支払済み, on: 発送, to: 発送済み}
+      - {from: 支払済み, on: キャンセル, to: キャンセル済み}
+      - {from: 発送済み, on: 到着, to: 完了}
+      - {from: 発送済み, on: キャンセル, to: 返品待ち}
+      - {from: 返品待ち, on: 到着, to: キャンセル済み}
+    rejects:
+      - {from: 受付, on: [発送, 到着], reason: 支払前}
+      - {from: 支払済み, on: [支払, 到着], reason: 二重支払・未発送}
+      - {from: 発送済み, on: [支払, 発送], reason: 発送済み}
+      - {from: 返品待ち, on: [支払, 発送, キャンセル], reason: 返品処理中}
+      - {from: [完了, キャンセル済み], on: [支払, 発送, 到着, キャンセル], reason: 終了済み}
+
+effects:
+  決済API:
+    failures: [タイムアウト, 拒否, 通信エラー]
+
+operations:
+  - id: 返金を実行
+    uses: [決済API]
+    on_failure:
+      決済API.タイムアウト: 照会してから再試行し、未確定なら保留にする
+      決済API.拒否: 返金失敗として記録し、担当者に通知する
+      決済API.通信エラー: タイムアウトと同じ扱いにする
