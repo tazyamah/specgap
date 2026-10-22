@@ -84,6 +84,13 @@ def render(spec: Spec, report: Report, *, base: Spec | None = None, change: Spec
         bm = next((b for b in base.machines if b.id == m.id), None) if base else None
         sections.append((f"states-{m.id}", f"状態の移り変わり：{m.id}", _machine(m, bm)))
 
+    # ---- システム間の連携 ----
+    if spec.systems:
+        sections.append(("systems", "システムのつながり", _integrations(spec, report, base)))
+        for op in spec.operations:
+            if op.steps:
+                sections.append((f"flow-{op.id}", f"処理の流れ：{op.id}", _sequence(spec, op, report)))
+
     # ---- 失敗 ----
     if spec.operations:
         sections.append(("failures", "外部とのやりとりが失敗したとき", _failures(spec)))
@@ -305,6 +312,103 @@ def _machine(m, bm) -> str:
     )
 
 
+_REVERSIBLE = {"yes": "できる", "no": "できない", "compensate": "埋め合わせる"}
+_MODE = {"sync": "応答を待つ", "async": "送るだけ（結果は後で届く）"}
+
+
+def _integrations(spec: Spec, report: Report, base: Spec | None) -> str:
+    def lines(sp, sys_name):
+        return [f"{n}（{_MODE.get(e.mode, e.mode)}）" for n, e in sp.effect_info.items() if e.system == sys_name]
+
+    systems = []
+    for name, sy in spec.systems.items():
+        kind = svg.SAME
+        if base is not None:
+            if name not in base.systems:
+                kind = svg.ADDED
+            elif lines(base, name) != lines(spec, name):
+                kind = svg.ADDED
+        systems.append((name, sy.kind, lines(spec, name), kind))
+    if base is not None:
+        systems += [(n, b.kind, lines(base, n), svg.REMOVED) for n, b in base.systems.items() if n not in spec.systems]
+    diagram = svg.context("このシステム", systems, "システム構成図")
+
+    bad = {(f.ref, item) for f in report.findings if f.check == "データ"
+           for item in spec.data_items if f"（{item}）" in f.title}
+    data_rows = []
+    for n, e in spec.effect_info.items():
+        sends = "、".join(
+            f'<span class="{"bad" if (n, it) in bad else ""}">{escape(it)}<span class="muted">（{escape(spec.data_items.get(it, "？"))}）</span></span>'
+            for it in e.sends
+        )
+        recv = "、".join(escape(it) for it in e.receives)
+        allowed = "・".join(spec.data_allow.get(e.system, [])) or "（決まっていない）"
+        data_rows.append(f"<tr><td>{escape(e.system)}</td><td>{escape(n)}</td><td>{sends}</td><td>{recv}</td><td class='muted'>{escape(allowed)}</td></tr>")
+
+    rev_rows = []
+    for n, e in spec.effect_info.items():
+        rev = _REVERSIBLE.get(e.reversible)
+        if e.reversible == "compensate":
+            rev = f"埋め合わせる（{e.compensate}）"
+        rev_td = f"<td>{escape(rev)}</td>" if rev else '<td class="ask">どうしますか</td>'
+        if e.reversible in ("no", "compensate"):
+            idem = f"<td>{escape(e.idempotency)}</td>" if e.idempotency else '<td class="ask">どうしますか</td>'
+        else:
+            idem = '<td class="muted">不要</td>'
+        rev_rows.append(f"<tr><td>{escape(n)}</td><td>{escape(e.system)}</td><td>{escape(_MODE.get(e.mode, e.mode))}</td>{rev_td}{idem}</tr>")
+    return (
+        '<p class="lead">このシステムがやりとりする外部のシステムです。外部への作用は取り消しにくく、データが外に出るので、ここが人の判断の要になります。</p>'
+        f'<div class="scroll figure">{diagram}</div>'
+        "<h3>外に出ていくデータ</h3>"
+        '<p class="lead">赤字は、その相手に渡してよい区分を超えているデータです。</p>'
+        f'<div class="scroll"><table class="grid"><thead><tr><th>相手</th><th>作用</th><th>渡すデータ（区分）</th><th>受け取るデータ</th><th>渡してよい区分</th></tr></thead><tbody>{"".join(data_rows)}</tbody></table></div>'
+        "<h3>取り消せるか</h3>"
+        '<p class="lead">取り消せない作用は、再試行で二重に実行されないよう、見分けるためのキーが要ります。</p>'
+        f'<div class="scroll"><table class="grid"><thead><tr><th>作用</th><th>相手</th><th>待ち方</th><th>取り消し</th><th>二重実行を防ぐキー</th></tr></thead><tbody>{"".join(rev_rows)}</tbody></table></div>'
+    )
+
+
+def _sequence(spec: Spec, op, report: Report) -> str:
+    me = "このシステム"
+    actor = next((u.actor for u in spec.usecases if op.id in u.uses), None)
+    parts = ([actor] if actor else []) + [me]
+    for st in op.steps:
+        e = spec.effect_info.get(st.target)
+        if e and e.system and e.system not in parts:
+            parts.append(e.system)
+    flags = {}
+    for f in report.findings:
+        if f.ref.startswith(op.id + "#"):
+            i = int(f.ref.split("#")[1])
+            flags[i] = "reject" if f.severity == ERROR or flags.get(i) == "reject" else "ask"
+    msgs = []
+    for i, st in enumerate(op.steps, start=1):
+        e = spec.effect_info.get(st.target)
+        fl = flags.get(i, "")
+        if st.kind == "confirm":
+            msgs.append(svg.Message(actor or me, actor or me, f"確認：{st.target}", flag=fl))
+        elif st.kind == "update":
+            msgs.append(svg.Message(me, me, st.target, flag=fl))
+        elif e is None:
+            msgs.append(svg.Message(me, me, f"？ {st.target}", flag="reject"))
+        elif st.kind == "call":
+            items = "・".join(e.sends)
+            msgs.append(svg.Message(me, e.system, f"{st.target}（{items}）", flag=fl))
+            back = "・".join(e.receives) or "結果"
+            msgs.append(svg.Message(e.system, me, back, "dashed"))
+        elif st.kind == "send":
+            msgs.append(svg.Message(me, e.system, f"{st.target}（{'・'.join(e.sends)}）を送る", flag=fl))
+        elif st.kind == "await":
+            msgs.append(svg.Message(e.system, me, f"{st.target} の結果{('（' + '・'.join(e.receives) + '）') if e.receives else ''}", "dashed", flag=fl))
+    diagram = svg.sequence(parts, msgs, f"処理の流れ {op.id}")
+    interrupt = (f'<p class="lead">途中で止まったとき：{escape(op.on_interrupt)}</p>' if op.on_interrupt
+                 else '<p class="note reject">途中で止まったときの扱いが決まっていません。</p>')
+    return (
+        '<p class="lead">上から順に処理が進みます。実線の矢印は依頼、破線は応答や後から届く結果です。赤や黄色の箇所は検査器が問いを出している手順です。</p>'
+        f'<div class="scroll figure">{diagram}</div>{interrupt}'
+    )
+
+
 def _failures(spec: Spec) -> str:
     rows = []
     for op in spec.operations:
@@ -429,6 +533,19 @@ svg.diagram .usecase.added ellipse { fill: var(--add-soft); stroke: var(--add); 
 svg.diagram .usecase.removed ellipse { fill: var(--remove-soft); stroke: var(--remove); stroke-dasharray: 4 3; }
 svg.diagram .actor circle, svg.diagram .actor path { fill: none; stroke: var(--ink); stroke-width: 1.5; }
 svg.diagram .actor text { font-weight: 600; }
+svg.diagram text.sub { font-size: 11px; fill: var(--muted); }
+svg.diagram .lifeline { fill: none; stroke: var(--line); stroke-width: 1.25; stroke-dasharray: 3 4; }
+svg.diagram .msg { fill: none; stroke: var(--muted); stroke-width: 1.25; }
+svg.diagram .msg.reject { stroke: var(--remove); stroke-width: 2; }
+svg.diagram .msg.ask { stroke: var(--ask); stroke-width: 2; }
+svg.diagram .mlabel text { font-size: 11.5px; }
+svg.diagram .mlabel.reject text { fill: var(--remove); font-weight: 600; }
+svg.diagram .mlabel.ask text { fill: var(--ask); font-weight: 600; }
+svg.diagram .note rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; }
+svg.diagram .note text { font-size: 11.5px; }
+svg.diagram .note.reject rect { fill: var(--remove-soft); stroke: var(--remove); stroke-width: 2; }
+svg.diagram .note.ask rect { fill: var(--ask-soft); stroke: var(--ask); stroke-width: 2; }
+.bad { color: var(--remove); font-weight: 600; }
 @media (max-width: 480px) { h1 { font-size: 1.55rem; } .cards { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 """

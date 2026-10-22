@@ -1,4 +1,4 @@
-# 通販の返品（修正後）。検査器の問いに答えて漏れを埋め、全額返金の期間を14日に短くした版。
+# 通販の返品（修正後）。検査器の問いに答えて漏れを埋め、全額返金の期間を14日に短くし、決済代行に氏名を渡さないようにした版。
 spec: 通販の返品（修正後）
 
 actors:
@@ -12,7 +12,7 @@ usecases:
   - id: 返品を申し込む
     actor: 購入者
     description: 届いた商品を返品し、返金を受ける
-    uses: [返金額の決定, 返金方法の決定, 注文]
+    uses: [返金額の決定, 返金方法の決定, 注文, 返品を受け付ける]
   - id: 返金状況を確認する
     actor: 購入者
   - id: 返金を承認する
@@ -100,14 +100,79 @@ machines:
       - {from: 返品待ち, on: [支払, 発送, キャンセル], reason: 返品処理中}
       - {from: [完了, キャンセル済み], on: [支払, 発送, 到着, キャンセル], reason: 終了済み}
 
+systems:
+  決済代行: {description: カード決済と返金を行う外部サービス}
+  メール配信: {description: 購入者へのメールを送る外部サービス}
+  倉庫システム: {description: 集荷と在庫を扱う社内の別システム, kind: 社内}
+
+data:
+  classes: [一般, 個人情報, 決済情報]
+  items:
+    注文番号: 一般
+    返金額: 一般
+    返金ID: 一般
+    集荷番号: 一般
+    決済ID: 決済情報
+    氏名: 個人情報
+    メールアドレス: 個人情報
+    住所: 個人情報
+  allow:
+    決済代行: [一般, 決済情報]
+    メール配信: [一般, 個人情報]
+    倉庫システム: [一般, 個人情報]
+
 effects:
   決済API:
+    system: 決済代行
+    mode: sync
+    sends: [注文番号, 返金額, 決済ID]
+    receives: [返金ID]
+    reversible: no
+    idempotency: 注文番号
     failures: [タイムアウト, 拒否, 通信エラー]
+  返金完了メール:
+    system: メール配信
+    mode: async
+    sends: [メールアドレス, 氏名, 返金額]
+    reversible: no
+    idempotency: 注文番号
+    failures: [送信失敗]
+  集荷依頼:
+    system: 倉庫システム
+    mode: async
+    sends: [注文番号, 氏名, 住所]
+    receives: [集荷番号]
+    reversible: compensate
+    compensate: 集荷の取消
+    idempotency: 注文番号
+    failures: [受付拒否]
+  集荷の取消:
+    system: 倉庫システム
+    mode: sync
+    sends: [集荷番号]
+    reversible: no
+    idempotency: 集荷番号
+    failures: [取消不可]
 
 operations:
+  - id: 返品を受け付ける
+    steps:
+      - confirm: 購入者が返品の内容と返金額の見込みを確認する
+      - send: 集荷依頼
+      - await: 集荷依頼
+      - update: 注文を返品待ちにする
+    on_interrupt: 倉庫システムに注文番号で集荷依頼の有無を照会し、あれば続きから再開する
+    on_failure:
+      集荷依頼.受付拒否: 申込を差し戻し、購入者に理由を表示する
   - id: 返金を実行
-    uses: [決済API]
+    steps:
+      - confirm: サポート担当が返金額を確認して承認する
+      - call: 決済API
+      - update: 注文を返金済みにする
+      - send: 返金完了メール
+    on_interrupt: 決済代行に注文番号で返金状況を照会し、返金済みなら状態の更新から再開する
     on_failure:
       決済API.タイムアウト: 照会してから再試行し、未確定なら保留にする
       決済API.拒否: 返金失敗として記録し、担当者に通知する
       決済API.通信エラー: タイムアウトと同じ扱いにする
+      返金完了メール.送信失敗: 1時間後に再送し、3回失敗したら担当者に通知する

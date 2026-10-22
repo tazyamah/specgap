@@ -49,7 +49,7 @@ def diff(base: Spec, head: Spec) -> SpecDiff:
             d.changes.append(Change(REMOVED, area, describe(k, old[k])))
         for k in old.keys() & new.keys():
             if old[k] != new[k]:
-                d.changes.append(Change(CHANGED, area, f"{describe(k, old[k])} → {describe(k, new[k])}"))
+                d.changes.append(Change(CHANGED, area, f"{k}：{old[k] or '（なし）'}　⇒　{new[k] or '（なし）'}"))
 
     keyed("項目", {f"入力 {k}": _var(v) for k, v in base.inputs.items()},
           {f"入力 {k}": _var(v) for k, v in head.inputs.items()}, lambda k, v: f"{k}（{v}）")
@@ -79,6 +79,42 @@ def diff(base: Spec, head: Spec) -> SpecDiff:
 
     keyed("失敗の扱い", handlers(base), handlers(head), lambda k, v: f"{k} は「{v}」")
 
+    def links(spec):
+        out = {}
+        for n, e in spec.effect_info.items():
+            if not e.system:
+                continue
+            out[f"{n} の相手"] = e.system
+            out[f"{n} の待ち方"] = "応答を待つ" if e.mode == "sync" else "送るだけ"
+            out[f"{n} の取り消し"] = {"yes": "できる", "no": "できない", "compensate": f"埋め合わせる（{e.compensate}）"}.get(e.reversible, "未定")
+            out[f"{n} の二重実行を防ぐキー"] = e.idempotency
+            out[f"{n} で渡すデータ"] = "・".join(e.sends)
+        return out
+
+    keyed("連携", {f"システム {k}": v.kind for k, v in base.systems.items()},
+          {f"システム {k}": v.kind for k, v in head.systems.items()}, lambda k, v: f"{k}（{v}）")
+    lb, lh = links(base), links(head)
+    names_b = {k.split(" ")[0] for k in lb}
+    names_h = {k.split(" ")[0] for k in lh}
+    # 作用そのものの追加・削除は1行にまとめ、残ったものは項目ごとに比べる
+    keyed("連携", {n: lb[f"{n} の相手"] for n in names_b}, {n: lh[f"{n} の相手"] for n in names_h},
+          lambda k, v: f"{k}（相手：{v}）")
+    both = names_b & names_h
+    keyed("連携", {k: v for k, v in lb.items() if k.split(" ")[0] in both},
+          {k: v for k, v in lh.items() if k.split(" ")[0] in both}, lambda k, v: f"{k}：{v}")
+    keyed("連携", {f"{k} に渡してよい区分": "・".join(v) for k, v in base.data_allow.items()},
+          {f"{k} に渡してよい区分": "・".join(v) for k, v in head.data_allow.items()}, lambda k, v: f"{k}：{v}")
+
+    def steps(spec):
+        label = {"confirm": "確認", "call": "呼ぶ", "send": "送る", "await": "待つ", "update": "更新"}
+        return {f"{o.id} の手順": " → ".join(f"{label[s.kind]}「{s.target}」" for s in o.steps)
+                for o in spec.operations if o.steps}
+
+    keyed("手順", steps(base), steps(head), lambda k, v: f"{k}：{v}")
+    keyed("手順", {f"{o.id} が途中で止まったとき": o.on_interrupt for o in base.operations if o.on_interrupt},
+          {f"{o.id} が途中で止まったとき": o.on_interrupt for o in head.operations if o.on_interrupt},
+          lambda k, v: f"{k}：{v}")
+
     def rows(spec):
         return {f"{t.id}：{r.when} → {_then(r.then)}": "" for t in spec.tables for r in t.rows}
 
@@ -89,7 +125,7 @@ def diff(base: Spec, head: Spec) -> SpecDiff:
     return d
 
 
-_AREA_ORDER = ["ユースケース", "画面", "状態", "決定表", "性質", "失敗の扱い", "項目"]
+_AREA_ORDER = ["ユースケース", "画面", "連携", "手順", "状態", "決定表", "性質", "失敗の扱い", "項目"]
 
 
 def _behavior(base: Spec, head: Spec) -> list[BehaviorChange]:
