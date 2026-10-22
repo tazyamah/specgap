@@ -23,6 +23,7 @@ class Var:
     min: int | None = None
     max: int | None = None
     description: str = ""
+    example: str | None = None  # 具体例を作るときに使う代表値
 
 
 @dataclass
@@ -87,6 +88,31 @@ class Operation:
 
 
 @dataclass
+class UseCase:
+    id: str
+    actor: str
+    description: str = ""
+    uses: list[str] = field(default_factory=list)  # 関係する表・状態機械・操作の id
+
+
+@dataclass
+class ScreenStep:
+    src: str
+    action: str
+    dst: str
+    usecase: str | None = None
+
+
+@dataclass
+class ScreenFlow:
+    id: str
+    start: str
+    screens: list[str]
+    final: list[str]
+    steps: list[ScreenStep]
+
+
+@dataclass
 class Spec:
     name: str
     enums: dict[str, list[str]] = field(default_factory=dict)
@@ -97,6 +123,9 @@ class Spec:
     machines: list[Machine] = field(default_factory=list)
     effects: dict[str, list[str]] = field(default_factory=dict)  # 効果名 → 失敗の種類
     operations: list[Operation] = field(default_factory=list)
+    actors: dict[str, str] = field(default_factory=dict)  # アクター名 → 説明
+    usecases: list[UseCase] = field(default_factory=list)
+    screen_flows: list[ScreenFlow] = field(default_factory=list)
 
 
 def load(path: str | Path) -> Spec:
@@ -153,6 +182,33 @@ def parse(data: Any) -> Spec:
                 on_failure={str(k): str(v) for k, v in (o.get("on_failure") or {}).items()},
             )
         )
+    for name, desc in (data.get("actors") or {}).items():
+        spec.actors[str(name)] = "" if desc is None else str(desc)
+
+    for u in data.get("usecases") or []:
+        spec.usecases.append(
+            UseCase(
+                id=str(u["id"]),
+                actor=str(u.get("actor", "")),
+                description=str(u.get("description", "")),
+                uses=[str(x) for x in u.get("uses") or []],
+            )
+        )
+
+    for f in data.get("screens") or []:
+        steps = [
+            ScreenStep(src=str(t["from"]), action=str(t["action"]), dst=str(t["to"]),
+                       usecase=str(t["usecase"]) if t.get("usecase") else None)
+            for t in f.get("transitions") or []
+        ]
+        names = [str(f["start"])]
+        for n in [*(f.get("screens") or []), *[x for st in steps for x in (st.src, st.dst)]]:
+            if str(n) not in names:
+                names.append(str(n))
+        spec.screen_flows.append(
+            ScreenFlow(id=str(f["id"]), start=str(f["start"]), screens=names,
+                       final=[str(x) for x in f.get("final") or []], steps=steps)
+        )
     return spec
 
 
@@ -170,6 +226,7 @@ def _vars(raw: dict, spec: Spec, label: str) -> dict[str, Var]:
             min=v.get("min"),
             max=v.get("max"),
             description=str(v.get("description", "")),
+            example=None if v.get("example") is None else str(v.get("example")),
         )
     return result
 
