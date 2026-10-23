@@ -177,7 +177,7 @@ operations:
       決済API.通信エラー: タイムアウトと同じ扱いにする
       返金完了メール.送信失敗: 1時間後に再送し、3回失敗したら担当者に通知する
 
-# 実装との対応。関数は仕様の入力名を引数で受け、出力（1つなら値そのもの）を返す。状態機械は (状態, 出来事) を受けて次の状態を返し、None は拒否
+# 実装との対応。表の関数は仕様の入力名を引数で受け、出力（1つなら値そのもの）を返す。状態機械は (状態, 出来事) を受けて次の状態を返し、None は拒否
 implementation:
   module: impl/shop_impl.py
   tables:
@@ -185,6 +185,9 @@ implementation:
     返金方法の決定: refund_method
   machines:
     注文: next_order_state
+  operations:                          # 操作の関数は ctx だけを受け取り、外部作用は ctx を通して使う
+    返品を受け付ける: accept_return
+    返金を実行: execute_refund
 
 # 項目ごとに必要な保証。届かない実装は受け入れない
 policy:

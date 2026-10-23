@@ -330,7 +330,11 @@ def _guarantee(g) -> str:
     rows = []
     for it in g.items:
         chip = f'<span class="chip {_LEVEL_CLASS[it.level]}">{escape(it.level)}</span>'
-        if it.example:
+        if it.example and it.kind == "操作":
+            basis = (f'<div class="kvs">{_kv(it.example)}</div>'
+                     f'<div class="vs"><span class="muted">仕様</span> {escape(it.expected["仕様"])}</div>'
+                     f'<div class="vs"><span class="bad">実装</span> {escape(it.actual["実装"])}</div>')
+        elif it.example:
             basis = (f'<div class="kvs">{_kv(it.example)}</div>'
                      f'<div class="vs"><span class="muted">仕様</span> {_kv(it.expected)}</div>'
                      f'<div class="vs"><span class="bad">実装</span> {_kv(it.actual)}</div>')
@@ -354,8 +358,29 @@ def _guarantee(g) -> str:
     return (
         f'<p class="lead">実装（<code>{escape(g.module)}</code>）を仕様の項目ごとに確かめた結果です。'
         "証明は実装をソルバで調べたもの、全件確認は有限の入力をすべて動かしたもの、テストは境界値と乱数で動かしたものです。"
+        "操作（外部とのやりとり）は、模擬の外部の中で正常・確認を断る・失敗・途中停止の筋書きをすべて動かしています。"
         "違反は実際に動かして確かめた具体例を出しています。監視ありの項目は、本番でも呼ばれるたびに仕様と比べます。</p>"
         f'<div class="scroll"><table class="grid"><thead><tr>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+        + _uses(g)
+    )
+
+
+def _uses(g) -> str:
+    ops = [it for it in g.items if it.kind == "操作" and it.uses]
+    if not ops:
+        return ""
+    rows = []
+    for it in ops:
+        before = it.before_uses
+        for e, d in it.uses.items():
+            added = before is not None and (e not in before or set(d) - set(before[e]))
+            rows.append(f'<tr{" class=added" if added else ""}><td>{escape(it.id)}</td><td>{escape(e)}</td>'
+                        f'<td>{escape("・".join(d) or "—")}</td></tr>')
+    return (
+        "<h3>操作の実装が使う外部作用</h3>"
+        '<p class="lead">実装を筋書きごとに動かして、実際に使った外部作用と渡したデータを集めたものです。'
+        "実装は仕様に書かれた外部作用しか使えない窓口（ctx）を通して動くので、これがそのまま実装の権限の一覧になります。前の版より増えたものは緑で示します。</p>"
+        f'<div class="scroll"><table class="grid"><thead><tr><th>操作</th><th>外部作用</th><th>渡したデータ</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
     )
 
 

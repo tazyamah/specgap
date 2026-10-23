@@ -52,7 +52,8 @@ def test_正しい実装はすべて証明済みになる():
     r, g = run(load(SHOP))
     assert r.ok
     assert {i.id: i.level for i in g.items} == {
-        "返金額の決定": PROVED, "返金方法の決定": PROVED, "注文": PROVED, "返金は支払額を超えない": PROVED}
+        "返金額の決定": PROVED, "返金方法の決定": PROVED, "注文": PROVED, "返金は支払額を超えない": PROVED,
+        "返品を受け付ける": TESTED, "返金を実行": TESTED}
     assert g.item("返金額の決定").basis.startswith("証明")
     assert g.item("返金方法の決定").basis.startswith("全件確認")  # 辞書でも入力が有限なら全件動かせる
     assert g.item("返金方法の決定").monitored
@@ -69,7 +70,7 @@ def test_バグ入りの実装は具体例つきで拒否する():
     order = g.item("注文")
     assert order.example == {"状態": "返品待ち", "出来事": "到着"}
     assert order.actual == {"次の状態": "完了"}
-    assert len(titles(r, ERROR)) == 2
+    assert len(titles(r, ERROR)) == 4  # 表・状態機械・操作2つ
 
 
 def test_正しくても証明できない書き方は方針に届かず拒否する():
@@ -301,4 +302,4 @@ def test_画面に実装の節が出る(tmp_path):
     html = out.read_text(encoding="utf-8")
     assert "実装が仕様どおりか" in html
     assert "shop_impl_bug.py" in html
-    assert "実装が仕様どおりでない、または方針の保証に届かない項目が 2 件あります" in html
+    assert "実装が仕様どおりでない、または方針の保証に届かない項目が 4 件あります" in html

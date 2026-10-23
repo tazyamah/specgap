@@ -149,6 +149,7 @@ class Implementation:
     module: Path  # 実装ファイル（仕様ファイルからの相対パスを解決したもの）
     tables: dict[str, str] = field(default_factory=dict)  # 表の id → 関数名
     machines: dict[str, str] = field(default_factory=dict)  # 状態機械の id → 関数名
+    operations: dict[str, str] = field(default_factory=dict)  # 操作の id → 関数名
 
 
 @dataclass
@@ -300,6 +301,7 @@ def parse(data: Any, base_dir: str | Path = ".") -> Spec:
             module=Path(base_dir) / str(impl["module"]),
             tables={str(k): str(v) for k, v in (impl.get("tables") or {}).items()},
             machines={str(k): str(v) for k, v in (impl.get("machines") or {}).items()},
+            operations={str(k): str(v) for k, v in (impl.get("operations") or {}).items()},
         )
     spec.policy = {str(k): str(v) for k, v in (data.get("policy") or {}).items()}
     return spec
