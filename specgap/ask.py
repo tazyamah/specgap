@@ -217,7 +217,7 @@ def reply(session: Session, qid: str, ans, said: str = "") -> tuple[str, bool]:
         return (f"問い {qid} は今の版にありません（もう答えたか、前の答えで変わりました）。\n\n" + to_text(p, report)), False
     if q.slot["type"] == "gap" and not isinstance(ans, dict) and len(q.slot["outputs"]) == 1:
         ans = {q.slot["outputs"][0]: ans}
-    res = apply(session.current, spec, report, {q.no: ans})
+    res = apply(session.current, spec, report, {q.no: ans}, said={q.no: said} if said else None)
     if res.errors:
         msg = "\n".join(f"反映できません：{e.split('：', 1)[-1]}" for e in res.errors)
         return f"{msg}\n人に聞き直してください。\n\n{to_text(packet(spec, q, len(qs)))}", False

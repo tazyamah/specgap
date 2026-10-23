@@ -7,6 +7,7 @@
   python -m specgap ask <仕様> [-o <作業中の版>]            次の1問を、会話で聞くための包みにして出す
   python -m specgap reply <仕様> [-o <作業中の版>] <問い> <答え> [--said <人の言葉>]
                                                            答えを1つ反映して検査し直し、次の1問を出す
+  python -m specgap decisions <仕様> -o <フォルダ>          判断（問いへの答え）を ADR 形式の Markdown に書き出す
   python -m specgap mcp                                    AI から ask・reply を使う MCP サーバー
   python -m specgap <仕様>                                 check と同じ
 """
@@ -30,7 +31,7 @@ from .view import render
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] not in ("check", "view", "questions", "answer", "ask", "reply", "mcp", "-h", "--help"):
+    if argv and argv[0] not in ("check", "view", "questions", "answer", "ask", "reply", "decisions", "mcp", "-h", "--help"):
         argv.insert(0, "check")
     parser = argparse.ArgumentParser(prog="specgap", description="仕様の漏れを検査し、人向けのレビュー画面を作ります")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -59,12 +60,24 @@ def main(argv: list[str] | None = None) -> int:
             k.add_argument("question", help="問いの識別子（Q で始まる）")
             k.add_argument("answer", help="答え（値・式・選択肢。{出力名: 値} の形も可）")
             k.add_argument("--said", default="", help="人が会話で言った言葉（記録に残す）")
+    dc = sub.add_parser("decisions", help="判断を ADR 形式の Markdown に書き出す")
+    dc.add_argument("spec", help="仕様ファイル（YAML）")
+    dc.add_argument("-o", "--output", required=True, help="書き出すフォルダ")
     sub.add_parser("mcp", help="AI から ask・reply を使う MCP サーバー（標準入出力）")
     args = parser.parse_args(argv)
     if args.cmd in ("questions", "answer"):
         return _answering(args)
     if args.cmd in ("ask", "reply"):
         return _asking(args)
+    if args.cmd == "decisions":
+        from .decisions import export
+        try:
+            paths = export(load(args.spec), args.output)
+        except SpecError as e:
+            print(f"仕様ファイルを読めません：{e}", file=sys.stderr)
+            return 2
+        print(f"{len(paths) - 1} 件の判断を {args.output} に書き出しました")
+        return 0
     if args.cmd == "mcp":
         from .mcp_server import serve
         serve()
