@@ -5,7 +5,7 @@
 python -m specgap check examples/shop_v2.yaml --impl examples/impl/shop_impl_loop.py で確かめられる。
 """
 
-from shop_impl import next_order_state, refund_method  # noqa: F401  （返金方法と注文は同じ実装）
+from shop_impl import accept_return, execute_refund, next_order_state, refund_method  # noqa: F401  （返金額のほかは同じ実装）
 
 # (経過日数の下限, 上限, 商品状態, 支払額を割る数)
 _RULES = [(0, 14, "未開封", 1), (0, 30, "開封済み", 2), (15, 30, "未開封", 2)]

@@ -39,13 +39,21 @@ def to_markdown(report: Report) -> str:
         for it in g.items:
             basis = it.basis
             if it.example:
-                basis = f"{_kv(it.example)} のとき 仕様 {_kv(it.expected)} / 実装 {_kv(it.actual)}"
+                basis = it.explain()
             before = f"（前の版：{it.before}）" if it.before and it.before != it.label else ""
             lines.append(
                 f"| {it.kind}「{it.id}」 | {it.function or '—'} | {it.level}{before} | {'監視あり' if it.monitored else '—'} "
                 f"| {basis} | {it.required}{'' if it.meets else ' ✗'} |"
             )
         lines.append("")
+        ops = [it for it in g.items if it.kind == "操作" and it.uses]
+        if ops:
+            lines += ["### 操作の実装が使う外部作用（実行して確かめた権限）", "",
+                      "| 操作 | 外部作用 | 渡したデータ |", "| --- | --- | --- |"]
+            for it in ops:
+                for e, d in it.uses.items():
+                    lines.append(f"| {it.id} | {e} | {'・'.join(d) or '—'} |")
+            lines.append("")
     if report.passed:
         lines += ["## 問題がなかった検査", ""]
         lines += [f"- {name}" for name in report.passed]

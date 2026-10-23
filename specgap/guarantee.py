@@ -30,6 +30,7 @@ from .checks import ERROR, WARNING, Report
 from .examples import LEFT_TO_IMPL, Examples, show, simple_model
 from .expr import Env, _Translator, compile_expr
 from .model import UNSPECIFIED, Ensure, Machine, Spec, SpecError, Table
+from .operations import verify_operation
 
 # 事前の保証の段階（後ろほど強い）。違反は「確かめた結果、仕様と違った」
 VIOLATION, NONE, TESTED, PROVED = "違反", "なし", "テスト済み", "証明済み"
@@ -72,7 +73,7 @@ def parse_requirement(text: str) -> Requirement:
 @dataclass
 class Item:
     """仕様の1項目に対する保証。"""
-    kind: str  # 表 / 状態機械 / 性質
+    kind: str  # 表 / 状態機械 / 性質 / 操作
     id: str
     function: str = ""  # 対応する実装の関数（性質は使った関数を「、」でつなぐ）
     level: str = NONE
@@ -84,10 +85,19 @@ class Item:
     required: Requirement = field(default_factory=Requirement)
     before: str | None = None  # 前の版の保証（比べたとき）
     before_rank: tuple[int, int] | None = None
+    uses: dict[str, list[str]] = field(default_factory=dict)  # 操作の実装が使った外部作用 → 渡したデータ
+    before_uses: dict[str, list[str]] | None = None
 
     @property
     def label(self) -> str:
         return self.level + ("＋監視" if self.monitored else "")
+
+    def explain(self) -> str:
+        """違反の具体例を1文にする。"""
+        if self.kind == "操作":
+            return (f"筋書き「{self.example['筋書き']}」で、仕様は「{self.expected['仕様']}」ですが、"
+                    f"実装は「{self.actual['実装']}」です。")
+        return f"{_fmt(self.example)} のとき、仕様は {_fmt(self.expected)}、実装は {_fmt(self.actual)} です。"
 
     @property
     def meets(self) -> bool:
@@ -120,7 +130,8 @@ def verify(spec: Spec, impl: str | Path | None = None, base: Spec | None = None)
     mapping = spec.implementation
     path = Path(impl) if impl is not None else mapping.module
     module = _load_module(path)
-    v = _Verifier(spec, module, mapping.tables if mapping else {}, mapping.machines if mapping else {})
+    v = _Verifier(spec, module, mapping.tables if mapping else {}, mapping.machines if mapping else {},
+                  mapping.operations if mapping else {})
     g = Guarantee(module=path.name, items=v.run())
     if base is not None and base.implementation is not None:
         try:
@@ -132,6 +143,8 @@ def verify(spec: Spec, impl: str | Path | None = None, base: Spec | None = None)
                 b = before.item(it.id)
                 if b is not None:
                     it.before, it.before_rank = b.label, _rank(b)
+                    if b.kind == "操作" and b.level != VIOLATION:
+                        it.before_uses = b.uses
     return g
 
 
@@ -141,8 +154,7 @@ def apply(report: Report, g: Guarantee) -> None:
     for it in g.items:
         name = f"{it.kind}「{it.id}」"
         if it.level == VIOLATION:
-            detail = f"{_fmt(it.example)} のとき、仕様は {_fmt(it.expected)}、実装は {_fmt(it.actual)} です。"
-            report.add(ERROR, "実装", f"{name}の実装（{it.function}）が仕様と違います", detail=detail,
+            report.add(ERROR, "実装", f"{name}の実装（{it.function}）が仕様と違います", detail=it.explain(),
                        question="実装を直しますか、それとも仕様が間違っていますか", example=it.example, ref=it.id)
         elif not it.function:
             report.add(WARNING, "実装", f"{name}に対応する実装がありません",
@@ -150,6 +162,12 @@ def apply(report: Report, g: Guarantee) -> None:
         elif not it.meets:
             report.add(ERROR, "実装", f"{name}は方針で「{it.required}」が必要ですが、「{it.label}」までしか確かめられていません",
                        detail=it.basis, ref=it.id)
+        if it.before_uses is not None and it.level != VIOLATION:
+            added = [f"{e}（{'・'.join(d)}）" for e, d in it.uses.items()
+                     if e not in it.before_uses or set(d) - set(it.before_uses[e])]
+            if added:
+                report.add(WARNING, "実装", f"{name}の実装が使う外部作用やデータが前の版より増えました",
+                           detail=f"増えたもの：{'、'.join(added)}", question="この権限の追加を認めますか", ref=it.id)
         if it.before_rank is not None and it.level != VIOLATION and _rank(it) < it.before_rank:
             report.add(WARNING, "実装", f"{name}の保証が前の版より下がりました（{it.before} → {it.label}）",
                        detail="方針の範囲内でも、下がったことは人が確かめます。", ref=it.id)
@@ -272,11 +290,13 @@ def _fmt(d: dict[str, str]) -> str:
 
 
 class _Verifier:
-    def __init__(self, spec: Spec, module, tables: dict[str, str], machines: dict[str, str]):
+    def __init__(self, spec: Spec, module, tables: dict[str, str], machines: dict[str, str],
+                 operations: dict[str, str]):
         self.spec = spec
         self.module = module
         self.tables = tables
         self.machines = machines
+        self.operations = operations
         self.env = Env(spec)
         self.x = Examples(spec, self.env)
         self.dom = self.env.domain(spec)
@@ -300,7 +320,34 @@ class _Verifier:
             outs = [n for n in names if n in self.spec.outputs]
             if outs:
                 items.append(self.ensure(e, outs, owner))
+        items += [self.operation(op) for op in self.spec.operations if op.steps]
         return items
+
+    # ---- 操作（外部とのやりとり） ----
+
+    def operation(self, op) -> Item:
+        item = Item("操作", op.id, required=self.required(op.id))
+        name = self.operations.get(op.id)
+        if not name:
+            item.basis = "対応する実装なし"
+            return item
+        item.function = name
+        fn = self.function(name)
+        if fn is None:
+            item.level, item.basis = VIOLATION, f"関数 {name} が実装ファイルにありません"
+            return item
+        r = verify_operation(self.spec, op, fn)
+        item.uses = r.used
+        if not r.ok:
+            item.level = VIOLATION
+            item.example = {"筋書き": r.scenario}
+            item.expected, item.actual = {"仕様": r.expected}, {"実装": r.actual}
+            item.basis = "違反の具体例あり"
+            return item
+        # 筋書きはすべて動かすが、データの値や2回目の失敗までは尽くしていないので証明とは呼ばない
+        item.level = TESTED
+        item.basis = f"{r.scenarios} 通りの筋書きをすべて確認（正常・確認を断る・失敗の種類ごと・各手順の直後で停止）"
+        return item
 
     # ---- 表 ----
 
