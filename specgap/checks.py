@@ -65,6 +65,7 @@ class _Checker:
         self.dom_in = env.domain(spec)
         self.dom_all = env.domain(spec, include_outputs=True)
         self.used_names: set[str] = set()
+        self._no_allow: set[str] = set()
 
     def run(self):
         steps = [
@@ -509,7 +510,8 @@ class _Checker:
                 self.report.add(ERROR, "データ", f"データ項目 {item} の区分 {cls} が定義されていません", ref=name)
         allowed = spec.data_allow.get(e.system)
         if allowed is None:
-            if e.sends:
+            if e.sends and e.system not in self._no_allow:  # 同じ相手への問いは1つにまとめる
+                self._no_allow.add(e.system)
                 self.report.add(ERROR, "データ", f"{e.system} に渡してよいデータの区分が決まっていません",
                                 question=f"{e.system} に渡してよいのは、{'・'.join(spec.data_classes)} のどれですか", ref=name)
             return
