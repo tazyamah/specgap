@@ -71,6 +71,7 @@ class _Checker:
             ("状態と出来事の網羅", self.check_machines),
             ("失敗の扱いの網羅", self.check_failures),
             ("ユースケースと画面の整合", self.check_usecases),
+            ("システム間の連携", self.check_integrations),
             ("入力項目の使用", self.check_unused_inputs),
         ]
         for name, step in steps:
@@ -408,6 +409,124 @@ class _Checker:
                 if u.id not in reached_ucs:
                     self.report.add(WARNING, "画面", f"ユースケース「{u.id}」を始める画面上の操作がありません",
                                     question=f"「{u.id}」はどの画面から始めますか（画面を持たない処理なら、その旨を確認してください）")
+
+    # ---- システム間の連携 ----
+
+    def check_integrations(self):
+        spec = self.spec
+        if not spec.systems:
+            return
+        used_systems = set()
+        for name, e in spec.effect_info.items():
+            if not e.system:
+                self.report.add(WARNING, "連携", f"外部作用 {name} がどのシステムとのやりとりか書かれていません",
+                                question=f"{name} はどのシステムとやりとりしますか", ref=name)
+                continue
+            if e.system not in spec.systems:
+                self.report.add(ERROR, "連携", f"外部作用 {name} のやりとり先 {e.system} が定義されていません", ref=name)
+                continue
+            used_systems.add(e.system)
+            if e.mode not in ("sync", "async"):
+                self.report.add(ERROR, "連携", f"外部作用 {name} の mode は sync か async です（{e.mode}）", ref=name)
+            if e.reversible not in ("yes", "no", "compensate"):
+                self.report.add(ERROR, "取り消し", f"外部作用 {name} を取り消せるかどうかが決まっていません",
+                                question=f"{e.system} への {name} は、取り消せますか。取り消せないなら、後から埋め合わせる手段はありますか",
+                                ref=name)
+            if e.reversible in ("no", "compensate") and not e.idempotency:
+                self.report.add(ERROR, "取り消し", f"取り消せない外部作用 {name} に、二重実行を防ぐ仕組みがありません",
+                                detail="通信の失敗で再試行したとき、同じ依頼が2回届く可能性があります。",
+                                question=f"同じ {name} が2回届いても1回分しか実行されないよう、何で見分けますか（注文番号など）",
+                                ref=name)
+            if e.reversible == "compensate" and e.compensate not in spec.effect_info:
+                self.report.add(ERROR, "取り消し", f"外部作用 {name} を埋め合わせる手段 {e.compensate or '（なし）'} が定義されていません",
+                                question=f"{name} を取り消したいときは、何をしますか", ref=name)
+            self._data_flow(name, e)
+        for sys_name in spec.systems:
+            if sys_name not in used_systems:
+                self.report.add(WARNING, "連携", f"システム {sys_name} とやりとりする外部作用がありません",
+                                question=f"{sys_name} は今も使いますか")
+        for op in spec.operations:
+            self._steps(op)
+
+    def _data_flow(self, name, e):
+        spec = self.spec
+        for item in e.sends + e.receives:
+            cls = spec.data_items.get(item)
+            if cls is None:
+                self.report.add(ERROR, "データ", f"データ項目 {item} の区分が決まっていません",
+                                question=f"{item} は {'・'.join(spec.data_classes) or '何'} のどれにあたりますか", ref=name)
+            elif spec.data_classes and cls not in spec.data_classes:
+                self.report.add(ERROR, "データ", f"データ項目 {item} の区分 {cls} が定義されていません", ref=name)
+        allowed = spec.data_allow.get(e.system)
+        if allowed is None:
+            if e.sends:
+                self.report.add(ERROR, "データ", f"{e.system} に渡してよいデータの区分が決まっていません",
+                                question=f"{e.system} に渡してよいのは、{'・'.join(spec.data_classes)} のどれですか", ref=name)
+            return
+        for item in e.sends:
+            cls = spec.data_items.get(item)
+            if cls is not None and cls not in allowed:
+                self.report.add(ERROR, "データ", f"{name} で {cls}（{item}）を {e.system} に渡しています",
+                                detail=f"{e.system} に渡してよい区分は {'・'.join(allowed) or 'ありません'} です。",
+                                question=f"{item} を {e.system} に渡す必要はありますか。渡すなら、許可する区分を変えますか",
+                                ref=name)
+
+    def _steps(self, op):
+        spec = self.spec
+        pending: list[str] = []
+        confirmed = False
+        external_done: list[str] = []
+        interrupt_reported = False  # 途中停止の問いは操作ごとに1回だけ出す
+        for i, st in enumerate(op.steps, start=1):
+            ref = f"{op.id}#{i}"
+            e = spec.effect_info.get(st.target) if st.kind in ("call", "send", "await") else None
+            if st.kind in ("call", "send", "await") and e is None:
+                self.report.add(ERROR, "手順", f"操作「{op.id}」の手順{i}が未定義の外部作用 {st.target} を使っています", ref=ref)
+                continue
+            if st.kind == "confirm":
+                confirmed = True
+            elif st.kind == "call" and e.mode != "sync":
+                self.report.add(ERROR, "手順", f"操作「{op.id}」の手順{i}：{st.target} は応答を待たない作用なので call ではなく send です", ref=ref)
+            elif st.kind == "send" and e.mode != "async":
+                self.report.add(ERROR, "手順", f"操作「{op.id}」の手順{i}：{st.target} は応答を待つ作用なので send ではなく call です", ref=ref)
+            elif st.kind == "await":
+                if st.target not in pending:
+                    self.report.add(ERROR, "手順", f"操作「{op.id}」の手順{i}：送っていない {st.target} の結果を待っています", ref=ref)
+                else:
+                    pending.remove(st.target)
+            elif st.kind == "update" and pending:
+                self.report.add(
+                    ERROR, "手順", f"操作「{op.id}」の手順{i}で、{'・'.join(pending)} の結果を待たずに状態を進めています",
+                    detail=f"手順{i}：{st.target}",
+                    question=f"{'・'.join(pending)} が失敗しても「{st.target}」のままでよいですか。結果を待ちますか",
+                    ref=ref,
+                )
+            if st.kind in ("call", "send"):
+                if e.reversible in ("no", "compensate") and not confirmed:
+                    self.report.add(
+                        WARNING, "手順", f"操作「{op.id}」で、取り消せない {st.target} の前に確認の手順がありません",
+                        question=f"{st.target} を実行する前に、内容を確認する手順を挟みますか", ref=ref,
+                    )
+                if st.kind == "send":
+                    pending.append(st.target)
+                if e.reversible in ("no", "compensate"):
+                    external_done.append(st.target)
+            if external_done and i < len(op.steps) and not op.on_interrupt and not interrupt_reported \
+                    and st.kind in ("call", "send"):
+                self.report.add(
+                    ERROR, "手順", f"操作「{op.id}」が {st.target} の後で止まったときの扱いがありません",
+                    detail="外部ではすでに作用が起きているので、やり直すと二重になり、放っておくと途中の状態が残ります。",
+                    question=f"「{op.id}」が {st.target} の直後で止まったら、再開したときにどうしますか", ref=ref,
+                )
+                interrupt_reported = True
+        # 失敗の扱いがすべて書かれていれば、失敗に気づく手段はあるとみなす
+        pending = [p for p in pending
+                   if not all(f"{p}.{f}" in op.on_failure for f in spec.effects.get(p, []))]
+        if pending:
+            self.report.add(
+                WARNING, "手順", f"操作「{op.id}」は {'・'.join(pending)} の結果を待たずに終わります",
+                question="結果が失敗だったと後で分かったら、誰がどう気づきますか", ref=op.id,
+            )
 
     # ---- 入力の使用 ----
 

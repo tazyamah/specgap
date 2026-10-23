@@ -81,10 +81,41 @@ class Machine:
 
 
 @dataclass
+class Step:
+    kind: str  # confirm / call / send / await / update
+    target: str  # call・send・await は外部作用の名前、confirm・update は説明文
+
+
+STEP_KINDS = ("confirm", "call", "send", "await", "update")
+
+
+@dataclass
 class Operation:
     id: str
     uses: list[str]
     on_failure: dict[str, str]  # "効果名.失敗名" → 扱い
+    steps: list[Step] = field(default_factory=list)
+    on_interrupt: str = ""  # 途中で止まったときの扱い
+
+
+@dataclass
+class System:
+    name: str
+    description: str = ""
+    kind: str = "外部"  # 外部 / 社内
+
+
+@dataclass
+class EffectInfo:
+    """外部作用の連携情報。"""
+    name: str
+    system: str = ""
+    mode: str = "sync"  # sync（応答を待つ）/ async（送るだけ。結果は後で届く）
+    sends: list[str] = field(default_factory=list)
+    receives: list[str] = field(default_factory=list)
+    reversible: str = ""  # yes / no / compensate
+    compensate: str = ""  # reversible が compensate のときの取り消し用の外部作用
+    idempotency: str = ""  # 二重実行を防ぐキー
 
 
 @dataclass
@@ -126,6 +157,11 @@ class Spec:
     actors: dict[str, str] = field(default_factory=dict)  # アクター名 → 説明
     usecases: list[UseCase] = field(default_factory=list)
     screen_flows: list[ScreenFlow] = field(default_factory=list)
+    systems: dict[str, System] = field(default_factory=dict)
+    effect_info: dict[str, EffectInfo] = field(default_factory=dict)
+    data_classes: list[str] = field(default_factory=list)
+    data_items: dict[str, str] = field(default_factory=dict)  # データ項目 → 区分
+    data_allow: dict[str, list[str]] = field(default_factory=dict)  # システム → 渡してよい区分
 
 
 def load(path: str | Path) -> Spec:
@@ -171,15 +207,51 @@ def parse(data: Any) -> Spec:
     for m in data.get("machines") or []:
         spec.machines.append(_machine(m))
 
+    for name, sys_ in (data.get("systems") or {}).items():
+        sys_ = sys_ or {}
+        if isinstance(sys_, str):
+            sys_ = {"description": sys_}
+        spec.systems[str(name)] = System(str(name), str(sys_.get("description", "")), str(sys_.get("kind", "外部")))
+
+    d = data.get("data") or {}
+    spec.data_classes = [str(c) for c in d.get("classes") or []]
+    spec.data_items = {str(k): str(v) for k, v in (d.get("items") or {}).items()}
+    spec.data_allow = {str(k): [str(c) for c in v or []] for k, v in (d.get("allow") or {}).items()}
+
     for name, e in (data.get("effects") or {}).items():
-        spec.effects[str(name)] = [str(x) for x in (e or {}).get("failures") or []]
+        e = e or {}
+        spec.effects[str(name)] = [str(x) for x in e.get("failures") or []]
+        spec.effect_info[str(name)] = EffectInfo(
+            name=str(name),
+            system=str(e.get("system", "")),
+            mode=str(e.get("mode", "sync")),
+            sends=[str(x) for x in e.get("sends") or []],
+            receives=[str(x) for x in e.get("receives") or []],
+            reversible=_yes_no(e.get("reversible", "")),
+            compensate=str(e.get("compensate", "")),
+            idempotency=str(e.get("idempotency", "")),
+        )
 
     for o in data.get("operations") or []:
+        steps = []
+        for i, st in enumerate(o.get("steps") or [], start=1):
+            if not isinstance(st, dict) or len(st) != 1:
+                raise SpecError(f"操作 {o['id']} の手順 {i} は「種類: 対象」の1組で書いてください")
+            (kind, target), = st.items()
+            if kind not in STEP_KINDS:
+                raise SpecError(f"操作 {o['id']} の手順 {i} の種類 {kind} は使えません（{' / '.join(STEP_KINDS)}）")
+            steps.append(Step(str(kind), str(target)))
+        uses = [str(u) for u in o.get("uses") or []]
+        for st in steps:
+            if st.kind in ("call", "send", "await") and st.target not in uses:
+                uses.append(st.target)
         spec.operations.append(
             Operation(
                 id=str(o["id"]),
-                uses=[str(u) for u in o.get("uses") or []],
+                uses=uses,
                 on_failure={str(k): str(v) for k, v in (o.get("on_failure") or {}).items()},
+                steps=steps,
+                on_interrupt=str(o.get("on_interrupt", "")),
             )
         )
     for name, desc in (data.get("actors") or {}).items():
@@ -210,6 +282,15 @@ def parse(data: Any) -> Spec:
                        final=[str(x) for x in f.get("final") or []], steps=steps)
         )
     return spec
+
+
+def _yes_no(v: Any) -> str:
+    """YAML 1.1 は yes / no を真偽値として読むので、文字列に戻す。"""
+    if v is True:
+        return "yes"
+    if v is False:
+        return "no"
+    return str(v)
 
 
 def _vars(raw: dict, spec: Spec, label: str) -> dict[str, Var]:

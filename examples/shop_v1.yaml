@@ -1,4 +1,4 @@
-# 通販の返品（修正前）。ユースケース・画面・決まりごと・状態・失敗をひとつにまとめた正本。
+# 通販の返品（修正前）。ユースケース・画面・決まりごと・状態・システム間連携をひとつにまとめた正本。
 spec: 通販の返品（修正前）
 
 actors:
@@ -12,7 +12,7 @@ usecases:
   - id: 返品を申し込む
     actor: 購入者
     description: 届いた商品を返品し、返金を受ける
-    uses: [返金額の決定, 注文]
+    uses: [返金額の決定, 注文, 返品を受け付ける]
   - id: 返金を承認する
     actor: サポート担当
     uses: [返金を実行]
@@ -77,13 +77,71 @@ machines:
       - {from: 支払済み, on: [支払, 到着], reason: 二重支払・未発送}
       - {from: [完了, キャンセル済み], on: [支払, 発送, 到着, キャンセル], reason: 終了済み}
 
+systems:
+  決済代行: {description: カード決済と返金を行う外部サービス}
+  メール配信: {description: 購入者へのメールを送る外部サービス}
+  倉庫システム: {description: 集荷と在庫を扱う社内の別システム, kind: 社内}
+
+data:
+  classes: [一般, 個人情報, 決済情報]
+  items:
+    注文番号: 一般
+    返金額: 一般
+    返金ID: 一般
+    集荷番号: 一般
+    決済ID: 決済情報
+    氏名: 個人情報
+    メールアドレス: 個人情報
+    住所: 個人情報
+  allow:
+    決済代行: [一般, 決済情報]
+    メール配信: [一般, 個人情報]
+    倉庫システム: [一般, 個人情報]
+
 effects:
   決済API:
+    system: 決済代行
+    mode: sync
+    sends: [注文番号, 返金額, 決済ID, 氏名]
+    receives: [返金ID]
+    reversible: no
     failures: [タイムアウト, 拒否, 通信エラー]
+  返金完了メール:
+    system: メール配信
+    mode: async
+    sends: [メールアドレス, 氏名, 返金額]
+    reversible: no
+    idempotency: 注文番号
+    failures: [送信失敗]
+  集荷依頼:
+    system: 倉庫システム
+    mode: async
+    sends: [注文番号, 氏名, 住所]
+    receives: [集荷番号]
+    reversible: compensate
+    compensate: 集荷の取消
+    idempotency: 注文番号
+    failures: [受付拒否]
+  集荷の取消:
+    system: 倉庫システム
+    mode: sync
+    sends: [集荷番号]
+    reversible: no
+    idempotency: 集荷番号
+    failures: [取消不可]
 
 operations:
+  - id: 返品を受け付ける
+    steps:
+      - send: 集荷依頼
+      - update: 注文を返品待ちにする
+    on_failure:
+      集荷依頼.受付拒否: サポート担当に通知する
   - id: 返金を実行
-    uses: [決済API]
+    steps:
+      - call: 決済API
+      - update: 注文を返金済みにする
+      - send: 返金完了メール
     on_failure:
       決済API.タイムアウト: 照会してから再試行し、未確定なら保留にする
       決済API.拒否: 返金失敗として記録し、担当者に通知する

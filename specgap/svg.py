@@ -174,3 +174,91 @@ def _svg(w: float, h: float, parts: list[str], title: str) -> str:
         f'<svg class="diagram" viewBox="0 0 {w:.0f} {h:.0f}" width="{w:.0f}" height="{h:.0f}" role="img" aria-label="{escape(title)}">'
         f"<defs>{markers}</defs>{''.join(parts)}</svg>"
     )
+
+
+def context(center: str, systems: list[tuple[str, str, list[str], str]], title: str = "") -> str:
+    """システム構成図。systems は (名前, 種類, 矢印に添える行, 差分の種類) の並び。
+
+    矢印は相手の手前で水平になり、添える行はその水平な部分の上に積む。
+    """
+    line_h = 16
+    box_h = NODE_H + 16
+    labels_w = max([text_width(t, 11.5) for _, _, lines, _ in systems for t in lines] + [80])
+    sys_w = max([text_width(n) for n, _, _, _ in systems] + [80]) + 40
+    center_w = text_width(center) + 48
+    blocks = [max(box_h, len(lines) * line_h + box_h / 2 + 14) for _, _, lines, _ in systems]
+    total_h = sum(blocks) + 20 * (len(systems) - 1) + 2 * PAD
+    cx, cy = PAD + center_w / 2, total_h / 2
+    x0 = PAD + center_w
+    xh = x0 + 120  # ここから水平になる
+    x1 = xh + labels_w + 24  # 相手の箱の左端
+    sx = x1 + sys_w / 2
+    parts = [
+        f'<g class="node start"><rect x="{PAD}" y="{cy - 30}" width="{center_w}" height="60" rx="8"/>'
+        f'<text x="{cx}" y="{cy + 5}" text-anchor="middle" font-weight="600">{escape(center)}</text></g>'
+    ]
+    y = PAD
+    for (name, kind, lines, ekind), bh in zip(systems, blocks):
+        my = y + bh - box_h / 2
+        parts.append(
+            f'<path class="edge {ekind}" d="M{x0} {cy} C{x0 + 70} {cy} {xh - 50} {my} {xh} {my} H{x1 - 2}" marker-end="url(#arrow-{ekind})"/>'
+        )
+        for i, t in enumerate(reversed(lines)):
+            parts.append(f'<g class="elabel {ekind}"><text x="{x1 - 14}" y="{my - 7 - i * line_h:.1f}" text-anchor="end">{escape(t)}</text></g>')
+        parts.append(
+            f'<g class="node {ekind}"><rect x="{x1}" y="{my - box_h / 2}" width="{sys_w}" height="{box_h}" rx="8"/>'
+            f'<text x="{sx}" y="{my - 2}" text-anchor="middle">{escape(name)}</text>'
+            f'<text class="sub" x="{sx}" y="{my + 14}" text-anchor="middle">{escape(kind)}</text></g>'
+        )
+        y += bh + 20
+    return _svg(x1 + sys_w + PAD, total_h, parts, title)
+
+
+@dataclass
+class Message:
+    src: str
+    dst: str  # src と同じなら、その参加者の上に書く覚え書き
+    label: str
+    style: str = "solid"  # solid / dashed
+    flag: str = ""  # ask / reject なら目立たせる
+
+
+def sequence(participants: list[str], messages: list[Message], title: str = "") -> str:
+    """シーケンス図。上から順にメッセージを並べる。"""
+    widest = max([text_width(m.label, 11.5) for m in messages if m.src != m.dst] + [60])
+    notes_w = max([text_width(m.label, 11.5) + 20 for m in messages if m.src == m.dst] + [0])
+    col = max(160, widest + 40, notes_w + 16)
+    head_w = {p: text_width(p) + 28 for p in participants}
+    half = max(max(head_w.values()), notes_w) / 2  # 両端の参加者の外側に要る幅
+    xs = {p: PAD + half + i * col for i, p in enumerate(participants)}
+    row, top = 46, PAD + NODE_H + 30
+    total_w = max(xs.values()) + half + PAD
+    total_h = top + len(messages) * row + PAD
+    parts = []
+    for p in participants:
+        x = xs[p]
+        parts.append(f'<path class="lifeline" d="M{x} {PAD + NODE_H} V{total_h - PAD + 4}"/>')
+        parts.append(
+            f'<g class="node"><rect x="{x - head_w[p] / 2}" y="{PAD}" width="{head_w[p]}" height="{NODE_H}" rx="8"/>'
+            f'<text x="{x}" y="{PAD + NODE_H / 2 + FONT / 3 + 1:.1f}" text-anchor="middle">{escape(p)}</text></g>'
+        )
+    for i, m in enumerate(messages):
+        y = top + i * row
+        flag = f" {m.flag}" if m.flag else ""
+        if m.src == m.dst:
+            w = text_width(m.label, 11.5) + 20
+            x = xs[m.src]
+            parts.append(
+                f'<g class="note{flag}"><rect x="{x - w / 2:.1f}" y="{y - 14}" width="{w:.1f}" height="24" rx="4"/>'
+                f'<text x="{x}" y="{y + 2}" text-anchor="middle">{escape(m.label)}</text></g>'
+            )
+            continue
+        x1, x2 = xs[m.src], xs[m.dst]
+        end = x2 - 2 if x2 > x1 else x2 + 2
+        dash = ' stroke-dasharray="5 4"' if m.style == "dashed" else ""
+        kind = "same"
+        parts.append(f'<path class="msg{flag}" d="M{x1} {y} H{end}"{dash} marker-end="url(#arrow-{kind})"/>')
+        parts.append(
+            f'<g class="mlabel{flag}"><text x="{(x1 + x2) / 2:.1f}" y="{y - 7}" text-anchor="middle">{escape(m.label)}</text></g>'
+        )
+    return _svg(total_w, total_h, parts, title)
