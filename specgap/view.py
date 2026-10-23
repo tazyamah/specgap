@@ -58,8 +58,14 @@ def render(spec: Spec, report: Report, *, base: Spec | None = None, change: Spec
                 f'<article class="card {cls}"><span class="chip {cls}">{label}</span>'
                 f'<p class="ctx">{escape(f.title)}</p>{q}{ex}{detail}</article>'
             )
-        lead = (f"検査器が仕様の中に {len(errors)} 件の漏れを見つけました。答えると正本が更新され、もう一度検査されます。"
-                if errors else "漏れはありませんが、人が判断したほうがよい点があります。")
+        gaps = [f for f in errors if f.check != "実装"]
+        impl_errors = len(errors) - len(gaps)
+        parts = []
+        if gaps:
+            parts.append(f"検査器が仕様の中に {len(gaps)} 件の漏れを見つけました。答えると正本が更新され、もう一度検査されます。")
+        if impl_errors:
+            parts.append(f"実装が仕様どおりでない、または方針の保証に届かない項目が {impl_errors} 件あります。")
+        lead = "".join(parts) or "漏れはありませんが、人が判断したほうがよい点があります。"
         sections.append(("questions", "答えてほしいこと", f'<p class="lead">{lead}</p><div class="cards">{"".join(cards)}</div>'))
 
     # ---- 変更点 ----
@@ -83,6 +89,10 @@ def render(spec: Spec, report: Report, *, base: Spec | None = None, change: Spec
     for m in spec.machines:
         bm = next((b for b in base.machines if b.id == m.id), None) if base else None
         sections.append((f"states-{m.id}", f"状態の移り変わり：{m.id}", _machine(m, bm)))
+
+    # ---- 実装 ----
+    if report.guarantee is not None:
+        sections.append(("impl", "実装が仕様どおりか", _guarantee(report.guarantee)))
 
     # ---- システム間の連携 ----
     if spec.systems:
@@ -312,6 +322,43 @@ def _machine(m, bm) -> str:
     )
 
 
+_LEVEL_CLASS = {"違反": "reject", "なし": "ask", "テスト済み": "tested", "証明済み": "ok"}
+
+
+def _guarantee(g) -> str:
+    has_before = any(it.before for it in g.items)
+    rows = []
+    for it in g.items:
+        chip = f'<span class="chip {_LEVEL_CLASS[it.level]}">{escape(it.level)}</span>'
+        if it.example:
+            basis = (f'<div class="kvs">{_kv(it.example)}</div>'
+                     f'<div class="vs"><span class="muted">仕様</span> {_kv(it.expected)}</div>'
+                     f'<div class="vs"><span class="bad">実装</span> {_kv(it.actual)}</div>')
+        else:
+            basis = escape(it.basis)
+        policy = escape(str(it.required))
+        if not it.meets and it.level != "違反":
+            policy = f'<span class="bad">{policy}（届いていない）</span>'
+        before = ""
+        if has_before:
+            changed = it.before and it.before != it.label
+            before = f'<td class="{"ask" if changed else "muted"}">{escape(it.before or "—")}</td>'
+        rows.append(
+            f'<tr><td>{escape(it.kind)}「{escape(it.id)}」</td><td><code>{escape(it.function or "—")}</code></td>'
+            f'<td>{chip}</td><td>{"監視あり" if it.monitored else "<span class=muted>—</span>"}</td>'
+            f"<td>{basis}</td><td>{policy}</td>{before}</tr>"
+        )
+    head = "<th>仕様の項目</th><th>実装の関数</th><th>事前の保証</th><th>実行時</th><th>根拠</th><th>方針</th>"
+    if has_before:
+        head += "<th>前の版</th>"
+    return (
+        f'<p class="lead">実装（<code>{escape(g.module)}</code>）を仕様の項目ごとに確かめた結果です。'
+        "証明は実装をソルバで調べたもの、全件確認は有限の入力をすべて動かしたもの、テストは境界値と乱数で動かしたものです。"
+        "違反は実際に動かして確かめた具体例を出しています。監視ありの項目は、本番でも呼ばれるたびに仕様と比べます。</p>"
+        f'<div class="scroll"><table class="grid"><thead><tr>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+    )
+
+
 _REVERSIBLE = {"yes": "できる", "no": "できない", "compensate": "埋め合わせる"}
 _MODE = {"sync": "応答を待つ", "async": "送るだけ（結果は後で届く）"}
 
@@ -465,6 +512,8 @@ nav a:hover, nav a:focus-visible { border-color: var(--accent); outline: none; }
 .chip.ok { background: var(--add-soft); color: var(--add); }
 .chip.reject { background: var(--remove-soft); color: var(--remove); }
 .chip.ask { background: var(--ask-soft); color: var(--ask); }
+.chip.tested { background: var(--accent-soft); color: var(--accent); }
+.vs { font-size: .82rem; margin-top: 4px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 .card { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 6px; padding: 14px 16px;
   display: flex; flex-direction: column; gap: 8px; align-items: flex-start; min-width: 0; }

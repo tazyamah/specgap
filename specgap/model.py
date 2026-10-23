@@ -144,6 +144,14 @@ class ScreenFlow:
 
 
 @dataclass
+class Implementation:
+    """仕様の項目と、それを実装した関数の対応。"""
+    module: Path  # 実装ファイル（仕様ファイルからの相対パスを解決したもの）
+    tables: dict[str, str] = field(default_factory=dict)  # 表の id → 関数名
+    machines: dict[str, str] = field(default_factory=dict)  # 状態機械の id → 関数名
+
+
+@dataclass
 class Spec:
     name: str
     enums: dict[str, list[str]] = field(default_factory=dict)
@@ -162,12 +170,14 @@ class Spec:
     data_classes: list[str] = field(default_factory=list)
     data_items: dict[str, str] = field(default_factory=dict)  # データ項目 → 区分
     data_allow: dict[str, list[str]] = field(default_factory=dict)  # システム → 渡してよい区分
+    implementation: Implementation | None = None
+    policy: dict[str, str] = field(default_factory=dict)  # 項目（または default）→ 必要な保証
 
 
 def load(path: str | Path) -> Spec:
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
-    return parse(_fix_keys(data))
+    return parse(_fix_keys(data), base_dir=Path(path).parent)
 
 
 def _fix_keys(data: Any) -> Any:
@@ -179,7 +189,7 @@ def _fix_keys(data: Any) -> Any:
     return data
 
 
-def parse(data: Any) -> Spec:
+def parse(data: Any, base_dir: str | Path = ".") -> Spec:
     if not isinstance(data, dict) or "spec" not in data:
         raise SpecError("先頭に spec: <仕様名> が必要です")
     spec = Spec(name=str(data["spec"]))
@@ -281,6 +291,17 @@ def parse(data: Any) -> Spec:
             ScreenFlow(id=str(f["id"]), start=str(f["start"]), screens=names,
                        final=[str(x) for x in f.get("final") or []], steps=steps)
         )
+
+    impl = data.get("implementation")
+    if impl:
+        if "module" not in impl:
+            raise SpecError("implementation には module（実装ファイル）が必要です")
+        spec.implementation = Implementation(
+            module=Path(base_dir) / str(impl["module"]),
+            tables={str(k): str(v) for k, v in (impl.get("tables") or {}).items()},
+            machines={str(k): str(v) for k, v in (impl.get("machines") or {}).items()},
+        )
+    spec.policy = {str(k): str(v) for k, v in (data.get("policy") or {}).items()}
     return spec
 
 

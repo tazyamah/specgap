@@ -37,6 +37,7 @@ class Report:
     spec: str
     findings: list[Finding] = field(default_factory=list)
     passed: list[str] = field(default_factory=list)
+    guarantee: object = None  # 実装の保証（guarantee.Guarantee）。実装を確かめたときだけ
 
     @property
     def ok(self) -> bool:
