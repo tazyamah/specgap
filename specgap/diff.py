@@ -13,7 +13,7 @@ ADDED, REMOVED, CHANGED = "追加", "削除", "変更"
 @dataclass
 class Change:
     kind: str  # 追加 / 削除 / 変更
-    area: str  # ユースケース / 画面 / 状態 / 決定表 / 性質 / 失敗の扱い / 項目
+    area: str  # 方針 / ユースケース / 画面 / 状態 / 決定表 / 性質 / 失敗の扱い / 項目
     text: str
 
 
@@ -119,13 +119,17 @@ def diff(base: Spec, head: Spec) -> SpecDiff:
         return {f"{t.id}：{r.when} → {_then(r.then)}": "" for t in spec.tables for r in t.rows}
 
     keyed("決定表", rows(base), rows(head), lambda k, v: k)
+    def policy(spec):
+        return {f"{'指定のない項目' if k == 'default' else k} に必要な保証": v for k, v in spec.policy.items()}
+
+    keyed("方針", policy(base), policy(head), lambda k, v: f"{k}：{v}")
 
     d.changes.sort(key=lambda c: (_AREA_ORDER.index(c.area), [ADDED, CHANGED, REMOVED].index(c.kind), c.text))
     d.behavior = _behavior(base, head)
     return d
 
 
-_AREA_ORDER = ["ユースケース", "画面", "連携", "手順", "状態", "決定表", "性質", "失敗の扱い", "項目"]
+_AREA_ORDER = ["方針", "ユースケース", "画面", "連携", "手順", "状態", "決定表", "性質", "失敗の扱い", "項目"]
 
 
 def _behavior(base: Spec, head: Spec) -> list[BehaviorChange]:

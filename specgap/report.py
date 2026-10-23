@@ -32,11 +32,29 @@ def to_markdown(report: Report) -> str:
             if f.question:
                 lines.append(f"    - 問い：{f.question}")
         lines.append("")
+    g = report.guarantee
+    if g is not None:
+        lines += [f"## 実装が仕様どおりか（{g.module}）", "",
+                  "| 仕様の項目 | 実装 | 事前の保証 | 実行時 | 根拠 | 方針 |", "| --- | --- | --- | --- | --- | --- |"]
+        for it in g.items:
+            basis = it.basis
+            if it.example:
+                basis = f"{_kv(it.example)} のとき 仕様 {_kv(it.expected)} / 実装 {_kv(it.actual)}"
+            before = f"（前の版：{it.before}）" if it.before and it.before != it.label else ""
+            lines.append(
+                f"| {it.kind}「{it.id}」 | {it.function or '—'} | {it.level}{before} | {'監視あり' if it.monitored else '—'} "
+                f"| {basis} | {it.required}{'' if it.meets else ' ✗'} |"
+            )
+        lines.append("")
     if report.passed:
         lines += ["## 問題がなかった検査", ""]
         lines += [f"- {name}" for name in report.passed]
         lines.append("")
     return "\n".join(lines)
+
+
+def _kv(d: dict[str, str]) -> str:
+    return "、".join(f"{k}={v}" for k, v in d.items())
 
 
 def to_json(report: Report) -> str:
@@ -46,4 +64,6 @@ def to_json(report: Report) -> str:
         "findings": [asdict(f) for f in report.findings],
         "passed": report.passed,
     }
+    if report.guarantee is not None:
+        data["guarantee"] = asdict(report.guarantee)
     return json.dumps(data, ensure_ascii=False, indent=2)
