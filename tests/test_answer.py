@@ -48,7 +48,7 @@ BASE = {
 
 def test_穴の問いは条件つきの行として答えられる(tmp_path):
     qs = questions(check(load(by_cells(tmp_path, "refund_v1.yaml"))))
-    assert [q.slot["when"] for q in qs] == [
+    assert [q.slot["when"] for q in qs if q.slot["type"] == "gap"] == [
         "経過日数 == 30 and 商品状態 == 開封済み",
         "経過日数 == 30 and 商品状態 == 未開封",
         "経過日数 >= 31 and 商品状態 == 開封済み",
