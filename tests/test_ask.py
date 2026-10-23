@@ -21,7 +21,7 @@ def first(packet):
     """どの種類の問いにも、とりあえず通る答えを返す。"""
     t = packet_slot(packet)["type"]
     if t == "gap":
-        return packet.choices[0] if packet.choices else "0"
+        return "0"
     if t == "data_over":
         return "渡さない"
     if packet.choices:
@@ -126,3 +126,9 @@ def test_mcp_の道具は2つ():
 
     tools = asyncio.run(build().list_tools())
     assert sorted(t.name for t in tools) == ["answer_question", "next_question"]
+
+
+def test_数の穴にはほかの行の値が候補として付く(shop):
+    p, _ = ask.next_packet(ask.session(shop))
+    assert p.choices == ["支払額", "支払額 // 2", "0", "unspecified"]
+    assert "1. 支払額 ／ 2. 支払額 // 2" in ask.to_text(p)

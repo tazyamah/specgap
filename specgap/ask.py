@@ -91,6 +91,10 @@ def choices(spec: Spec, slot: dict) -> list[str]:
                 return spec.enums[var.type] + [UNSPECIFIED]
             if var is not None and var.type == "bool":
                 return ["True", "False", UNSPECIFIED]
+            # 数の出力は、同じ表のほかの行で使っている値を候補にする（ほかの値や式も答えられる）
+            table = next(x for x in spec.tables if x.id == slot["table"])
+            seen = [str(r.then[slot["outputs"][0]]) for r in table.rows if slot["outputs"][0] in r.then]
+            return list(dict.fromkeys(v for v in seen if v != UNSPECIFIED)) + [UNSPECIFIED]
         return []
     if t == "overlap":
         return [str(r) for r in slot["rows"]]
@@ -159,7 +163,7 @@ def to_text(p: Packet | None, report: Report | None = None) -> str:
     if p.example and shown not in p.question:
         out.append("具体例：" + "、".join(f"{k}={v}" for k, v in p.example.items()))
     if p.choices:
-        out.append("選択肢：" + " ／ ".join(p.choices))
+        out.append("選択肢（番号で聞き、答えは選択肢の文字列で渡す）：" + " ／ ".join(f"{i}. {c}" for i, c in enumerate(p.choices, 1)))
     out += [f"答え方：{p.how}", f"答えると：{p.effect}"]
     if p.context:
         out += ["", "関係する部分："] + p.context
