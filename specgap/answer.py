@@ -179,7 +179,8 @@ def _apply_one(doc, spec: Spec, env: Env, slot: dict, ans) -> str:
             v = str(ans[o])
             if v != UNSPECIFIED:
                 compile_expr(v, env)  # 読めない式はここで止める
-            then[o] = ans[o]
+            # 会話やコマンドから来た答えは文字列のことがあるので、整数と真偽値は値に戻して正本に書く
+            then[o] = int(v) if v.lstrip("-").isdigit() else {"True": True, "False": False}.get(v, v)
         table = _find(doc.get("tables"), slot["table"], "表")
         table["rows"].append(CommentedMap({"when": slot["when"], "then": _flow(then)}))
         return f"表「{slot['table']}」に行を追加（{slot['when']} → {', '.join(f'{k}={v}' for k, v in then.items())}）"

@@ -27,6 +27,9 @@ python -m specgap check examples/shop_v2.yaml --impl examples/impl/shop_impl_bug
 python -m specgap questions examples/shop_v1.yaml         # 答えると正本を直せる問いの一覧
 python -m specgap answer examples/shop_v1.yaml examples/answers/shop_v1.yaml -o examples/shop_v1_answered.yaml
                                                           # 答えを正本に書き込み、新しい版を検査
+python -m specgap ask examples/shop_v1.yaml              # 次の1問（会話で1つずつ聞く）
+python -m specgap reply examples/shop_v1.yaml <問い> <答え> --said "<人の言葉>"
+                                                          # 答えを1つ反映して検査し直し、次の1問
 python -m pytest -q                                       # テスト
 ```
 
@@ -147,6 +150,33 @@ answers:
 `answer` は元のファイルの書式とコメントを保ったまま答えを書き込み（ruamel.yaml を使用）、新しい版を検査して残りの問いを出します。
 答えが新しい漏れを生むこともあります（たとえば性質「返金は支払額を超えない」に反する金額を答えた場合）。そのときは次の問いとして返り、答え直すまで受け入れ可になりません。
 `shop_v1.yaml` に 15 問答えた `shop_v1_answered.yaml` は受け入れ可になり、`views/shop_v1_answered.html` で前の版との差分を確かめられます。
+
+### 会話で1問ずつ聞く
+
+一覧を前にまとめて答えるのは重いので、AI が会話で1問だけ聞き、答えを1つ反映するたびに検査し直して次の1問を出す流れも用意しました（[inloop](https://github.com/tazyamah/inloop) と同じく、必要な情報は機械が決まった形でまとめ、AI は聞き方を整えるだけにします）。
+
+`ask` が出す1問ぶんの包み：
+
+```
+[AI への指示] この問いを1つだけ、人に会話で聞いてください。…
+問い Q7b046f（残り 16 問）：表「返金額の決定」のどの行にも当たらない入力があります
+聞くこと：経過日数=30、商品状態=開封済み のとき、どうしますか
+答え方：返金額 の値か式（決めないなら unspecified）
+答えると：表「返金額の決定」に、条件「経過日数 == 30 and 商品状態 == 開封済み」の行が加わります
+
+関係する部分：
+表「返金額の決定」（今ある行）
+  1. 経過日数 < 30 and 商品状態 == 未開封 → 返金額=支払額
+  …
+```
+
+- 選択肢がある問い（状態・行の番号・データの区分・渡さない／許可する など）には `選択肢：` が付きます
+- 問いの識別子（`Q…`）は問いの場所から決まるので、版が変わっても同じ問いなら同じです。もう無い問いへの答えは反映しません
+- 元の仕様は書き換えず、作業中の版（`-o`、省略時は `<仕様>.work.yaml`）を更新します。答えは `<作業中の版>.answers.jsonl` に追記だけで残し、人が言った言葉（`--said`）もそのまま入れます
+- 読めない答え（式の誤りなど）は反映せず、同じ問いを聞き直すよう返します
+
+AI から使うときは MCP サーバー（`python -m specgap mcp`、設定はリポジトリの `.mcp.json`）の道具 `next_question` と `answer_question` を使います。道具は2つだけです。
+レビュー画面は読む場所と記録のままにし、入力欄は付けません。
 
 ## 外部とのやりとりの実装（試作4）
 

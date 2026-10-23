@@ -2,3 +2,4 @@ z3-solver>=4.12
 pyyaml>=6
 pytest>=8
 ruamel.yaml>=0.18
+mcp>=1.2
