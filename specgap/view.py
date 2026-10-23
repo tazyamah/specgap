@@ -6,10 +6,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 from html import escape
 
 from . import svg
+from .answer import questions
 from .checks import ERROR, INFO, WARNING, Report
 from .diff import ADDED, CHANGED, REMOVED, SpecDiff
 from .examples import Examples
@@ -49,14 +51,19 @@ def render(spec: Spec, report: Report, *, base: Spec | None = None, change: Spec
     # ---- 答えてほしいこと ----
     if errors or warns:
         cards = []
+        numbered = {json.dumps(q.slot, ensure_ascii=False, sort_keys=True): q for q in questions(report)}
         for f in errors + warns:
             label, cls = _SEVERITY[f.severity]
             q = f'<p class="q">{escape(f.question)}</p>' if f.question else ""
             ex = f'<div class="kvs">{_kv(f.example)}</div>' if f.example else ""
             detail = f'<p class="detail">{escape(f.detail)}</p>' if f.detail else ""
+            qn = numbered.get(json.dumps(f.slot, ensure_ascii=False, sort_keys=True)) if f.slot else None
+            no = f'<span class="qno">問い {qn.no}</span>' if qn else ""
+            how = (f'<dl class="how"><dt>答え方</dt><dd>{escape(qn.how)}</dd>'
+                   f'<dt>答えると</dt><dd>{escape(prettify(qn.effect))}</dd></dl>') if qn else ""
             cards.append(
-                f'<article class="card {cls}"><span class="chip {cls}">{label}</span>'
-                f'<p class="ctx">{escape(f.title)}</p>{q}{ex}{detail}</article>'
+                f'<article class="card {cls}"><div class="chips"><span class="chip {cls}">{label}</span>{no}</div>'
+                f'<p class="ctx">{escape(f.title)}</p>{q}{ex}{detail}{how}</article>'
             )
         gaps = [f for f in errors if f.check != "実装"]
         impl_errors = len(errors) - len(gaps)
@@ -261,6 +268,7 @@ def _rules(spec: Spec, report: Report, x: Examples, base: Spec | None) -> str:
             f"<h3>{escape(t.id)}</h3>"
             f'<div class="scroll"><table class="grid rules"><thead><tr><th class="num">行</th><th>条件</th>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>{warn}'
         )
+        out.append(_table_rules(spec, report, t))
         exs = x.for_table(t)
         if exs:
             names = list(exs[0].inputs)
@@ -277,6 +285,40 @@ def _rules(spec: Spec, report: Report, x: Examples, base: Spec | None) -> str:
     if spec.ensures:
         items = "".join(f"<li><b>{escape(e.id)}</b><span class='formula'>{escape(prettify(e.expr))}</span></li>" for e in spec.ensures)
         out.append(f"<h3>いつでも成り立つこと</h3><ul class='plain ensures'>{items}</ul>")
+    return "".join(out)
+
+
+def _table_rules(spec: Spec, report: Report, t) -> str:
+    """表の根底にあるルールと、表を格子にしたもの（ルールと見比べて振り返るため）。"""
+    from . import rules as rulebook
+    from .expr import Env
+
+    out = []
+    mine = [r for r in spec.rules if t in rulebook.tables_for(spec, r)]
+    if mine:
+        broken = {f.title for f in report.findings if f.check == "ルール" and f.severity == "error"}
+        items = []
+        for r in mine:
+            bad = f"表「{t.id}」がルール「{r.id}」に反しています" in broken
+            mark = '<span class="reject">反している</span>' if bad else '<span class="muted">表と合っている</span>'
+            items.append(f"<li><b>{escape(r.id)}</b> {mark}</li>")
+        out.append(f"<h4>この表の根底にあるルール</h4><ul class='plain ensures'>{''.join(items)}</ul>")
+    g = rulebook.grid(spec, Env(spec), t)
+    if g is not None and (g.num or len(g.cols) > 1):
+        head = f"<th>{escape(g.num or '')}</th>" + "".join(f"<th>{escape(rulebook.Grid.col_label(c))}</th>" for c in g.cols)
+        body = []
+        for si in range(len(g.segs)):
+            cells = []
+            for ci in range(len(g.cols)):
+                r = g.rows[(si, ci)]
+                if r is None:
+                    cells.append('<td class="ask">？</td>')
+                else:
+                    v = "、".join(str(r.then.get(o, "")) for o in t.outputs)
+                    cells.append(f"<td>{escape(prettify(v))}</td>")
+            body.append(f"<tr><td>{escape(g.label(si))}</td>{''.join(cells)}</tr>")
+        out.append(f'<details open><summary>格子で見る</summary><div class="scroll"><table class="grid"><thead><tr>{head}</tr></thead>'
+                   f'<tbody>{"".join(body)}</tbody></table></div></details>')
     return "".join(out)
 
 
@@ -547,6 +589,11 @@ nav a:hover, nav a:focus-visible { border-color: var(--accent); outline: none; }
 .card .ctx { margin: 0; font-size: .82rem; color: var(--muted); }
 .card .q { margin: 0; font-size: 1.05rem; font-weight: 600; }
 .card .detail { margin: 0; font-size: .85rem; color: var(--muted); }
+.chips { display: flex; gap: 8px; align-items: center; }
+.qno { font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.how { margin: 4px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: .8rem; border-top: 1px dashed var(--line); padding-top: 8px; width: 100%; }
+.how dt { color: var(--muted); white-space: nowrap; }
+.how dd { margin: 0; }
 .kvs { display: flex; flex-wrap: wrap; gap: 6px; }
 .kv { display: inline-flex; font-size: .8rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
 .kv .k { padding: 1px 6px; background: var(--bg); color: var(--muted); }

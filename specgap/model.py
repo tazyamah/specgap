@@ -38,6 +38,7 @@ class Table:
     id: str
     rows: list[Row]
     description: str = ""
+    by_cells: bool = False  # ルールから組み立てず、穴を1つずつ聞く
 
     @property
     def outputs(self) -> list[str]:
@@ -53,6 +54,27 @@ class Table:
 class Ensure:
     id: str
     expr: str
+
+
+@dataclass
+class Rule:
+    """表の根底にあるルール。表の2つの入力を比べる形で書き、機械が表と照らし合わせる。
+
+    傾向：by が増える（列挙なら定義の順に進む）と、outputs は trend の向きに動く（減る・増える・関係ない・場合による）
+    関係：by が src のときの値から、by が dst のときの値が then で決まる（then の中の出力名は src のときの値。「同じ」も可）
+    """
+    id: str
+    outputs: list[str]
+    by: str
+    trend: str = ""
+    src: str = ""
+    dst: str = ""  # 整数なら「30」か「30..45」
+    then: str = ""
+
+
+TRENDS = ("減る", "増える", "関係ない", "場合による")
+UNDECIDED = "決めない"
+SAME = "同じ"
 
 
 @dataclass
@@ -160,6 +182,7 @@ class Spec:
     outputs: dict[str, Var] = field(default_factory=dict)
     tables: list[Table] = field(default_factory=list)
     ensures: list[Ensure] = field(default_factory=list)
+    rules: list[Rule] = field(default_factory=list)
     machines: list[Machine] = field(default_factory=list)
     effects: dict[str, list[str]] = field(default_factory=dict)  # 効果名 → 失敗の種類
     operations: list[Operation] = field(default_factory=list)
@@ -210,10 +233,14 @@ def parse(data: Any, base_dir: str | Path = ".") -> Spec:
                 raise SpecError(f"表 {t.get('id')} の {i} 行目には when と then が必要です")
             then = {str(k): str(v) for k, v in (r["then"] or {}).items()}
             rows.append(Row(index=i, when=str(r["when"]), then=then))
-        spec.tables.append(Table(id=str(t["id"]), rows=rows, description=str(t.get("description", ""))))
+        spec.tables.append(Table(id=str(t["id"]), rows=rows, description=str(t.get("description", "")),
+                                 by_cells=bool(t.get("by_cells", False))))
 
     for e in data.get("ensures") or []:
         spec.ensures.append(Ensure(id=str(e["id"]), expr=str(e["expr"])))
+
+    for r in data.get("rules") or []:
+        spec.rules.append(_rule(r, spec))
 
     for m in data.get("machines") or []:
         spec.machines.append(_machine(m))
@@ -305,6 +332,26 @@ def parse(data: Any, base_dir: str | Path = ".") -> Spec:
         )
     spec.policy = {str(k): str(v) for k, v in (data.get("policy") or {}).items()}
     return spec
+
+
+def _rule(r: dict, spec: Spec) -> Rule:
+    rid = str(r.get("id", ""))
+    outs = r.get("output")
+    outs = [str(x) for x in outs] if isinstance(outs, list) else [str(outs)]
+    for o in outs:
+        if o not in spec.outputs:
+            raise SpecError(f"ルール「{rid}」の出力 {o} が定義されていません")
+    by = str(r.get("by", ""))
+    if by not in spec.inputs:
+        raise SpecError(f"ルール「{rid}」の by（{by}）が入力にありません")
+    rule = Rule(rid, outs, by, trend=str(r.get("trend", "")), src=str(r.get("from", "")),
+                dst=str(r.get("to", "")), then=str(r.get("then", "")))
+    if rule.trend:
+        if rule.trend not in TRENDS:
+            raise SpecError(f"ルール「{rid}」の trend は {'・'.join(TRENDS)} のどれかです")
+    elif not (rule.src and rule.dst and rule.then):
+        raise SpecError(f"ルール「{rid}」には trend か、from・to・then が必要です")
+    return rule
 
 
 def _yes_no(v: Any) -> str:

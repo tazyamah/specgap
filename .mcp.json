@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "specgap": {
+      "command": "python",
+      "args": ["-m", "specgap", "mcp"]
+    }
+  }
+}
