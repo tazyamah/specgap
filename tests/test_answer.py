@@ -15,6 +15,19 @@ def write(tmp_path, data, name="spec.yaml"):
     return p
 
 
+def by_cells(tmp_path, name):
+    """穴を1つずつ聞く（ルールから聞かない）版を作る。"""
+    from ruamel.yaml import YAML
+    y = YAML()
+    doc = y.load((EXAMPLES / name).read_text(encoding="utf-8"))
+    for t in doc["tables"]:
+        t["by_cells"] = True
+    p = tmp_path / name
+    with p.open("w", encoding="utf-8") as f:
+        y.dump(doc, f)
+    return p
+
+
 def answered(path, answers):
     spec = load(path)
     report = check(spec)
@@ -33,8 +46,8 @@ BASE = {
 }
 
 
-def test_穴の問いは条件つきの行として答えられる():
-    qs = questions(check(load(EXAMPLES / "refund_v1.yaml")))
+def test_穴の問いは条件つきの行として答えられる(tmp_path):
+    qs = questions(check(load(by_cells(tmp_path, "refund_v1.yaml"))))
     assert [q.slot["when"] for q in qs] == [
         "経過日数 == 30 and 商品状態 == 開封済み",
         "経過日数 == 30 and 商品状態 == 未開封",
@@ -44,8 +57,7 @@ def test_穴の問いは条件つきの行として答えられる():
 
 
 def test_答えると漏れが埋まりコメントは残る(tmp_path):
-    src = tmp_path / "refund.yaml"
-    src.write_text((EXAMPLES / "refund_v1.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+    src = by_cells(tmp_path, "refund_v1.yaml")
     res, out = answered(src, {1: {"返金額": "支払額 // 2"}, 2: {"返金額": "支払額"}, 3: {"返金額": 0}})
     assert not res.errors and len(res.applied) == 3
     assert res.text.startswith("# 返金の仕様（修正前）")
@@ -76,7 +88,7 @@ def test_状態の問いには遷移か拒否で答える(tmp_path):
 
 
 def test_答えが新しい漏れを生めば次の問いになる(tmp_path):
-    p = write(tmp_path, {**BASE, "tables": [{"id": "表", "rows": [{"when": "日数 <= 30", "then": {"額": "額面"}}]}],
+    p = write(tmp_path, {**BASE, "tables": [{"id": "表", "by_cells": True, "rows": [{"when": "日数 <= 30", "then": {"額": "額面"}}]}],
                          "ensures": [{"id": "額面を超えない", "expr": "額 <= 額面"}]})
     res, out = answered(p, {1: {"額": "額面 + 1"}})
     assert not res.errors
@@ -85,7 +97,8 @@ def test_答えが新しい漏れを生めば次の問いになる(tmp_path):
 
 
 def test_答えの形が違えば反映しない(tmp_path):
-    p = write(tmp_path, {**BASE, "tables": [{"id": "表", "rows": [{"when": "日数 <= 30", "then": {"額": "額面"}}]}]})
+    p = write(tmp_path, {**BASE, "tables": [{"id": "表", "by_cells": True,
+                                             "rows": [{"when": "日数 <= 30", "then": {"額": "額面"}}]}]})
     res, _ = answered(p, {1: {"返金": 0}})
     assert "答える出力は 額 です" in res.errors[0]
     res, _ = answered(p, {1: {"額": "額面 +"}})

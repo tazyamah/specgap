@@ -23,7 +23,9 @@ from pathlib import Path
 from ruamel.yaml import YAML
 
 from .answer import REJECT_WORD, Question, _place, apply, questions
+from . import rules as rulebook
 from .checks import ERROR, Report, check
+from .expr import Env
 from .model import UNSPECIFIED, Spec, SpecError, load
 
 INSTRUCTION = ("この問いを1つだけ、人に会話で聞いてください。具体例と選択肢はそのまま見せ、"
@@ -108,11 +110,36 @@ def choices(spec: Spec, slot: dict) -> list[str]:
         return ["渡さない", "許可する"]
     if t == "await":
         return ["待つ"]
+    if t == "rule_trend":
+        return ["減る（か同じ）", "増える（か同じ）", "関係ない", "場合による"]
+    if t == "rule_relate":
+        return ["同じ", "半分", "0", "決めない"]
+    if t == "rule_boundary":
+        sides = [f"{slot['below']} 以下と同じ" if slot["below"] is not None else None,
+                 f"{slot['above']} 以上と同じ" if slot["above"] is not None else None]
+        return [x for x in sides if x] + ["どちらでもない"]
+    if t == "derive":
+        return ["正しい", "セルごとに答える"]
     return []
 
 
 def context(spec: Spec, slot: dict) -> list[str]:
     t = slot["type"]
+    if t == "derive":
+        return [f"ルールを合わせた表「{slot['table']}」（* はルールから決めたマス）"] + slot["grid"]
+    if t.startswith("rule_"):
+        table = next(x for x in spec.tables if x.id == slot["table"])
+        g = rulebook.grid(spec, Env(spec), table)
+        lines = [f"表「{table.id}」の今の行（？ はまだ決まっていないマス）"] + (rulebook.render(spec, g) if g else [])
+        if t == "rule_trend" and slot["fits"]:
+            lines.append(f"今の行に合うのは：{'・'.join(slot['fits'])}")
+        if t == "rule_relate":
+            fits = [{"同じ": "同じ", f"{slot['output']} // 2": "半分", "0": "0"}.get(c, c) for c in slot["fits"]]
+            lines.append(f"今の行に合うのは：{'・'.join(fits) or 'どれもなし'}")
+        done = [r.id for r in spec.rules if slot["table"] in [x.id for x in rulebook.tables_for(spec, r)]]
+        if done:
+            lines.append("決まっているルール：" + "・".join(done))
+        return lines
     if t in ("gap", "overlap"):
         table = next(x for x in spec.tables if x.id == slot["table"])
         lines = [f"表「{table.id}」（今ある行）"]
@@ -205,11 +232,24 @@ def reply(session: Session, qid: str, ans, said: str = "") -> tuple[str, bool]:
         else:
             session.work.unlink()
         return f"新しい版を読めません：{e}", False
-    _record(session, q, ans, said, src.name, hashlib.sha256(before).hexdigest()[:12], res.applied)
     p, after = next_packet(session)
+    old_errors = {f.title for f in report.findings if f.severity == ERROR}
+    conflicts = [f for f in after.findings if f.severity == ERROR and f.check == "ルール" and f.title not in old_errors]
+    if conflicts:  # 答えたルールが今の行と合わなければ反映しない
+        if src == session.work:
+            session.work.write_bytes(before)
+        else:
+            session.work.unlink()
+        msg = "\n".join(f"反映できません：このルールは今の表と合いません。{f.detail}" for f in conflicts)
+        return f"{msg}\nルールと表のどちらが正しいか、人に聞き直してください。\n\n{to_text(packet(spec, q, len(qs)))}", False
+    _record(session, q, ans, said, src.name, hashlib.sha256(before).hexdigest()[:12], res.applied)
+    new_errors = [f for f in after.findings if f.severity == ERROR and not f.slot and f.title not in old_errors]
     applied = res.applied[0].split("：", 1)[-1]
     head = (f"反映しました：{applied}\n"
             f"今の版（{session.work.name}）：{'受け入れ可' if after.ok else '拒否'}、残りの問い {p.remaining if p else 0} 問")
+    if new_errors:
+        head += "\n答えたことで新しく出た拒否（問いの形にできないもの。人に伝えてください）：" + \
+            "".join(f"\n  ・{f.title}。{f.detail}" for f in new_errors)
     return head + "\n\n" + to_text(p, after), True
 
 

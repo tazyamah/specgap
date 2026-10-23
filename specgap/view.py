@@ -268,6 +268,7 @@ def _rules(spec: Spec, report: Report, x: Examples, base: Spec | None) -> str:
             f"<h3>{escape(t.id)}</h3>"
             f'<div class="scroll"><table class="grid rules"><thead><tr><th class="num">行</th><th>条件</th>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>{warn}'
         )
+        out.append(_table_rules(spec, report, t))
         exs = x.for_table(t)
         if exs:
             names = list(exs[0].inputs)
@@ -284,6 +285,40 @@ def _rules(spec: Spec, report: Report, x: Examples, base: Spec | None) -> str:
     if spec.ensures:
         items = "".join(f"<li><b>{escape(e.id)}</b><span class='formula'>{escape(prettify(e.expr))}</span></li>" for e in spec.ensures)
         out.append(f"<h3>いつでも成り立つこと</h3><ul class='plain ensures'>{items}</ul>")
+    return "".join(out)
+
+
+def _table_rules(spec: Spec, report: Report, t) -> str:
+    """表の根底にあるルールと、表を格子にしたもの（ルールと見比べて振り返るため）。"""
+    from . import rules as rulebook
+    from .expr import Env
+
+    out = []
+    mine = [r for r in spec.rules if t in rulebook.tables_for(spec, r)]
+    if mine:
+        broken = {f.title for f in report.findings if f.check == "ルール" and f.severity == "error"}
+        items = []
+        for r in mine:
+            bad = f"表「{t.id}」がルール「{r.id}」に反しています" in broken
+            mark = '<span class="reject">反している</span>' if bad else '<span class="muted">表と合っている</span>'
+            items.append(f"<li><b>{escape(r.id)}</b> {mark}</li>")
+        out.append(f"<h4>この表の根底にあるルール</h4><ul class='plain ensures'>{''.join(items)}</ul>")
+    g = rulebook.grid(spec, Env(spec), t)
+    if g is not None and (g.num or len(g.cols) > 1):
+        head = f"<th>{escape(g.num or '')}</th>" + "".join(f"<th>{escape(rulebook.Grid.col_label(c))}</th>" for c in g.cols)
+        body = []
+        for si in range(len(g.segs)):
+            cells = []
+            for ci in range(len(g.cols)):
+                r = g.rows[(si, ci)]
+                if r is None:
+                    cells.append('<td class="ask">？</td>')
+                else:
+                    v = "、".join(str(r.then.get(o, "")) for o in t.outputs)
+                    cells.append(f"<td>{escape(prettify(v))}</td>")
+            body.append(f"<tr><td>{escape(g.label(si))}</td>{''.join(cells)}</tr>")
+        out.append(f'<details open><summary>格子で見る</summary><div class="scroll"><table class="grid"><thead><tr>{head}</tr></thead>'
+                   f'<tbody>{"".join(body)}</tbody></table></div></details>')
     return "".join(out)
 
 

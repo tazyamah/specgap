@@ -34,7 +34,7 @@ from ruamel.yaml.comments import CommentedMap
 
 from .checks import Report
 from .expr import Env, compile_expr
-from .model import UNSPECIFIED, Spec, SpecError
+from .model import SAME, TRENDS, UNDECIDED, UNSPECIFIED, Spec, SpecError
 
 REJECT_WORD = "拒否"
 
@@ -74,7 +74,8 @@ def questions(report: Report) -> list[Question]:
 
 
 def _place(slot: dict) -> dict:
-    return {k: v for k, v in slot.items() if k not in ("outputs", "states", "classes", "items")}
+    return {k: v for k, v in slot.items()
+            if k not in ("outputs", "states", "classes", "items", "fits", "candidates", "grid", "rows", "numeric")}
 
 
 def describe(slot: dict) -> tuple[str, str]:
@@ -108,7 +109,22 @@ def describe(slot: dict) -> tuple[str, str]:
                 f"操作「{slot['operation']}」の {slot['effect']} の前に、確認の手順が入ります")
     if t == "interrupt":
         return ("扱いを文章で", f"操作「{slot['operation']}」に、途中で止まったときの扱いが加わります")
+    if t == "rule_trend":
+        return ("減る・増える・関係ない・場合による のどれか",
+                f"ルール「{slot['by']}と{slot['output']}の傾向」が正本に加わり、表がこれに反すると拒否されます")
+    if t == "rule_relate":
+        return (f"同じ・半分・0・決めない のどれか、または {slot['from']} のときの {slot['output']} を使った式",
+                f"ルール「{slot['to']}の{slot['output']}は{slot['from']}のときと比べてどうか」が正本に加わります")
+    if t == "rule_boundary":
+        return ("どちらと同じ扱いか（どちらでもないなら「どちらでもない」）",
+                f"ルール「{slot['by']}の境目の扱い」が正本に加わり、表のすべての列にまとめて使われます")
+    if t == "derive":
+        return ("「正しい」か「セルごとに答える」",
+                f"正しいなら表「{slot['table']}」に、ルールから決めた {len(slot['rows'])} 行が加わります")
     raise ValueError(t)
+
+
+TREND_WORDS = {"減る": "増えない", "増える": "減らない"}
 
 
 def load_answers(path: str | Path) -> tuple[str | None, dict[int, object]]:
@@ -179,8 +195,7 @@ def _apply_one(doc, spec: Spec, env: Env, slot: dict, ans) -> str:
             v = str(ans[o])
             if v != UNSPECIFIED:
                 compile_expr(v, env)  # 読めない式はここで止める
-            # 会話やコマンドから来た答えは文字列のことがあるので、整数と真偽値は値に戻して正本に書く
-            then[o] = int(v) if v.lstrip("-").isdigit() else {"True": True, "False": False}.get(v, v)
+            then[o] = _value(v)
         table = _find(doc.get("tables"), slot["table"], "表")
         table["rows"].append(CommentedMap({"when": slot["when"], "then": _flow(then)}))
         return f"表「{slot['table']}」に行を追加（{slot['when']} → {', '.join(f'{k}={v}' for k, v in then.items())}）"
@@ -259,7 +274,76 @@ def _apply_one(doc, spec: Spec, env: Env, slot: dict, ans) -> str:
             raise SpecError("扱いを文章で答えてください")
         _find(doc.get("operations"), slot["operation"], "操作")["on_interrupt"] = text
         return f"操作「{slot['operation']}」が途中で止まったら「{text}」"
+    if t.startswith("rule_") or t == "derive":
+        return _apply_rule(doc, spec, env, slot, str(ans).strip())
     raise SpecError(f"この問い（{t}）にはまだ答えられません")
+
+
+def _apply_rule(doc, spec: Spec, env: Env, slot: dict, text: str) -> str:
+    t = slot["type"]
+    if t == "derive":
+        table = _find(doc.get("tables"), slot["table"], "表")
+        if text.startswith("正しい"):
+            for r in slot["rows"]:
+                then = {k: _value(v) for k, v in r["then"].items()}
+                table["rows"].append(CommentedMap({"when": r["when"], "then": _flow(then)}))
+            return f"表「{slot['table']}」に、ルールから決めた {len(slot['rows'])} 行を追加"
+        if text.startswith("セル"):
+            table["by_cells"] = True
+            return f"表「{slot['table']}」は、穴を1つずつ聞く"
+        raise SpecError("「正しい」か「セルごとに答える」で答えてください（違うところがあれば、どのルールが違うかを聞いてください）")
+    by = slot["by"]
+    verb = "進む" if spec.inputs[by].type not in ("int", "bool") else "増える"
+    if t == "rule_trend":
+        o = slot["output"]
+        word = next((w for w in TRENDS if text.startswith(w)), None)
+        if word is None:
+            raise SpecError(f"{'・'.join(TRENDS)} のどれかで答えてください")
+        rid = {"関係ない": f"{o}は{by}によらない", "場合による": f"{by}と{o}の傾向は決めない"}.get(
+            word, f"{by}が{verb}と{o}は{TREND_WORDS.get(word, '')}")
+        rule = {"id": rid, "output": o, "by": by, "trend": word}
+        _rules(doc).append(_flow(rule))
+        return f"ルール「{rid}」"
+    if t == "rule_relate":
+        o, a, b = slot["output"], slot["from"], slot["to"]
+        then = {"半分": f"{o} // 2", "同じ": SAME}.get(text, text)
+        if then not in (SAME, UNDECIDED):
+            compile_expr(then, env)
+        label = {SAME: "と同じ", UNDECIDED: "との関係は決めない", f"{o} // 2": "の半分", "0": "でも0"}.get(then, f"から {then}")
+        rid = f"{b}の{o}は{a}のとき{label}"
+        _rules(doc).append(_flow({"id": rid, "output": o, "by": by, "from": a, "to": b, "then": then}))
+        return f"ルール「{rid}」"
+    if t == "rule_boundary":
+        lo, hi = slot["lo"], slot["hi"]
+        span = f"{lo}" if lo == hi else f"{lo}〜{hi}"
+        dst = lo if lo == hi else f"{lo}..{hi}"
+        side = None
+        if slot["below"] is not None and (text.startswith(str(slot["below"])) or "以下" in text):
+            side = slot["below"]
+        elif slot["above"] is not None and (text.startswith(str(slot["above"])) or "以上" in text):
+            side = slot["above"]
+        if side is None and not text.startswith("どちらでもない"):
+            raise SpecError("どちらと同じ扱いか、または「どちらでもない」で答えてください")
+        outs = slot["outputs"]
+        src = side if side is not None else (slot["below"] if slot["below"] is not None else slot["above"])
+        then = SAME if side is not None else UNDECIDED
+        rid = f"{by}が{span}のときは{side}と同じ扱い" if side is not None else f"{by}が{span}のときは別に決める"
+        _rules(doc).append(_flow({"id": rid, "output": outs[0] if len(outs) == 1 else list(outs), "by": by,
+                                  "from": src, "to": dst, "then": then}))
+        return f"ルール「{rid}」"
+    raise SpecError(f"この問い（{t}）にはまだ答えられません")
+
+
+def _value(v: str):
+    """会話やコマンドから来た答えは文字列のことがあるので、整数と真偽値は値に戻して正本に書く。"""
+    v = str(v)
+    return int(v) if v.lstrip("-").isdigit() else {"True": True, "False": False}.get(v, v)
+
+
+def _rules(doc):
+    if doc.get("rules") is None:
+        doc["rules"] = []
+    return doc["rules"]
 
 
 def _step_index(steps, kind: str, target: str) -> int:

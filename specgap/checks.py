@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 import z3
 
+from . import rules as rulebook
 from .expr import Compiled, Env, compile_expr
 from .model import UNSPECIFIED, Machine, Spec, SpecError, Table
 
@@ -70,6 +71,7 @@ class _Checker:
             ("出力の割り当て", self.check_outputs),
             ("決定表の網羅と排他", self.check_tables),
             ("性質の矛盾と決定表との整合", self.check_ensures),
+            ("ルールと決定表の整合", self.check_rules),
             ("状態と出来事の網羅", self.check_machines),
             ("失敗の扱いの網羅", self.check_failures),
             ("ユースケースと画面の整合", self.check_usecases),
@@ -129,7 +131,10 @@ class _Checker:
                     if v != UNSPECIFIED:
                         self.used_names |= self._compile(v).names
             self._unreachable_rows(t, conds)
+            at = len(self.report.findings)
             self._gaps(t, conds)
+            if len(self.report.findings) > at and not t.by_cells:
+                self._rule_questions(t, at)
             self._overlaps(t, conds)
             for r in t.rows:
                 for out, v in r.then.items():
@@ -138,6 +143,28 @@ class _Checker:
                             INFO, "未規定", f"表「{t.id}」の{r.index}行目で {out} を意図的に決めていません",
                             detail=f"条件: {r.when}",
                         )
+
+    def _rule_questions(self, t: Table, at: int):
+        """穴のある表では、穴を1つずつ聞く前に根底のルールを聞き、出そろったらルールから組み立てた表を見せる。"""
+        g = rulebook.grid(self.spec, self.env, t)
+        if g is None:
+            return
+        found = []
+        for slot in rulebook.pending(self.spec, self.env, t, g):
+            found.append(Finding(WARNING, "ルール", _rule_title(t, slot), question=_rule_question(slot),
+                                 ref=t.id, slot=slot))
+        if not found:
+            made = rulebook.derive(self.spec, self.env, t, g)
+            if made:
+                rows = [{"when": g.cond(self.spec, si, ci), "then": {o: v for o, (v, _) in cell.items()}}
+                        for (si, ci), cell in sorted(made.items())]
+                used = sorted({rid for cell in made.values() for _, rid in cell.values()})
+                found.append(Finding(
+                    WARNING, "ルール", f"表「{t.id}」の穴を、ルールから埋めた案があります",
+                    detail="ルール：" + "・".join(used),
+                    question="ルールを合わせると、表はこうなります。これで正しいですか", ref=t.id,
+                    slot={"type": "derive", "table": t.id, "rows": rows, "grid": rulebook.render(self.spec, g, made)}))
+        self.report.findings[at:at] = found
 
     def _unreachable_rows(self, t: Table, conds: list[Compiled]):
         for r, c in zip(t.rows, conds):
@@ -278,6 +305,21 @@ class _Checker:
         if var.max is not None:
             cs.append(v <= var.max)
         return z3.And(cs) if cs else z3.BoolVal(True)
+
+    # ---- ルール ----
+
+    def check_rules(self):
+        for rule in self.spec.rules:
+            for t in rulebook.tables_for(self.spec, rule):
+                bad = rulebook.violation(self.spec, self.env, t, rule)
+                if bad is None:
+                    continue
+                (a, va), (b, vb) = bad
+                self.report.add(
+                    ERROR, "ルール", f"表「{t.id}」がルール「{rule.id}」に反しています",
+                    detail=f"{self._fmt(a)} のとき {self._fmt(va)}、{self._fmt(b)} のとき {self._fmt(vb)} です。",
+                    question="表とルールのどちらが正しいですか", example=b, ref=t.id,
+                )
 
     # ---- 状態機械 ----
 
@@ -668,3 +710,23 @@ def _show(value) -> str:
 
 
 __all__ = ["check", "Report", "Finding", "ERROR", "WARNING", "INFO", "SpecError"]
+
+
+def _rule_title(t: Table, slot: dict) -> str:
+    if slot["type"] == "rule_trend":
+        return f"表「{t.id}」で、{slot['by']}と{slot['output']}の関係（傾向）が決まっていません"
+    if slot["type"] == "rule_relate":
+        return f"表「{t.id}」で、{slot['by']}が{slot['from']}と{slot['to']}のときの{slot['output']}の関係が決まっていません"
+    return f"表「{t.id}」で、{slot['by']}の境目の扱いが決まっていません"
+
+
+def _rule_question(slot: dict) -> str:
+    if slot["type"] == "rule_trend":
+        return f"{slot['by']}が{'増える' if slot.get('numeric') else '進む'}と、{slot['output']}はどうなりますか"
+    if slot["type"] == "rule_relate":
+        return f"{slot['by']}が{slot['to']}のときの{slot['output']}は、{slot['from']}のときと比べてどうなりますか"
+    lo, hi = slot["lo"], slot["hi"]
+    span = f"{lo}" if lo == hi else f"{lo}〜{hi}"
+    sides = [f"{slot['below']} 以下" if slot["below"] is not None else None,
+             f"{slot['above']} 以上" if slot["above"] is not None else None]
+    return f"{slot['by']}が {span} のときは、{'と '.join(x for x in sides if x)}のどちらと同じ扱いですか"
