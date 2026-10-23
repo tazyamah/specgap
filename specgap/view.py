@@ -112,6 +112,10 @@ def render(spec: Spec, report: Report, *, base: Spec | None = None, change: Spec
     if spec.operations:
         sections.append(("failures", "外部とのやりとりが失敗したとき", _failures(spec)))
 
+    # ---- 判断 ----
+    if spec.decisions:
+        sections.append(("decisions", "判断の記録（なぜこうなっているか）", _decisions(spec)))
+
     # ---- 決めていないこと ----
     if infos:
         items = "".join(f"<li>{escape(f.title)}<span class='muted'>（{escape(prettify(f.detail.removeprefix('条件: ')))}）</span></li>" for f in infos)
@@ -256,7 +260,8 @@ def _rules(spec: Spec, report: Report, x: Examples, base: Spec | None) -> str:
             cells = "".join(
                 f'<td class="{"muted" if r.then.get(o) == UNSPECIFIED else ""}">{escape(prettify(r.then.get(o, "")))}</td>' for o in outs
             )
-            rows.append(f'<tr{cls}><td class="num">{r.index}</td><td>{escape(prettify(r.when))}</td>{cells}</tr>')
+            why = _why(spec, t.id, r.when) if spec.decisions else ""
+            rows.append(f'<tr{cls}><td class="num">{r.index}</td><td>{escape(prettify(r.when))}</td>{cells}{why}</tr>')
         for f in report.findings:
             if f.check == "網羅" and f.ref == t.id:
                 cond = "、".join(f"{k}＝{v}" for k, v in f.example.items())
@@ -266,7 +271,7 @@ def _rules(spec: Spec, report: Report, x: Examples, base: Spec | None) -> str:
         warn = "".join(f'<p class="note reject">{escape(f.title)}：{escape(f.question)}</p>' for f in overlaps)
         out.append(
             f"<h3>{escape(t.id)}</h3>"
-            f'<div class="scroll"><table class="grid rules"><thead><tr><th class="num">行</th><th>条件</th>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>{warn}'
+            f'<div class="scroll"><table class="grid rules"><thead><tr><th class="num">行</th><th>条件</th>{head}{"<th>理由</th>" if spec.decisions else ""}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>{warn}'
         )
         out.append(_table_rules(spec, report, t))
         exs = x.for_table(t)
@@ -288,8 +293,36 @@ def _rules(spec: Spec, report: Report, x: Examples, base: Spec | None) -> str:
     return "".join(out)
 
 
+def _why(spec: Spec, table: str, when: str) -> str:
+    from .decisions import current
+
+    ids = [d.id for d in current(spec) if f"表:{table}:{when}" in d.applies_to]
+    links = " ".join(f'<a href="#{escape(i)}">{escape(i)}</a>' for i in ids)
+    return f'<td class="muted">{links or "—"}</td>'
+
+
+def _decisions(spec: Spec) -> str:
+    """判断ごとに、問い・決めたこと・人の言葉・前提・効いている場所。"""
+    from .decisions import current, exists
+
+    live = {d.id for d in current(spec)}
+    out = ['<p class="lead">問いに答えて決めたことです。正本の表の行・ルール・手順は、どの判断から来たかを持っています。'
+           'リポジトリには <code>python -m specgap decisions</code> で ADR として書き出せます。</p>']
+    for d in spec.decisions:
+        by = [x.id for x in spec.decisions if d.id in x.supersedes]
+        state = f'<span class="muted">置き換え済み（{escape("・".join(by))}）</span>' if d.id not in live else ""
+        said = "".join(f"<blockquote>{escape(x)}</blockquote>" for x in d.said.splitlines() if x) if d.said else ""
+        assume = ("<p><b>前提</b></p><ul class='plain'>" + "".join(f"<li>{escape(a)}</li>" for a in d.assumptions) + "</ul>") if d.assumptions else ""
+        where = "".join(f"<li><code>{escape(r)}</code>{'' if exists(spec, r) or d.id not in live else ' <span class=reject>正本にありません</span>'}</li>" for r in d.applies_to)
+        out.append(f'<details id="{escape(d.id)}"><summary><b>{escape(d.id)}</b> {escape(d.title or d.answer)} {state}</summary>'
+                   f'<p class="muted">問い：{escape(d.question)}</p><p>決めたこと：{escape(d.answer)}</p>{said}{assume}'
+                   f'<p><b>正本で効いている場所</b></p><ul class="plain">{where}</ul></details>')
+    return "".join(out)
+
+
 def _table_rules(spec: Spec, report: Report, t) -> str:
     """表の根底にあるルールと、表を格子にしたもの（ルールと見比べて振り返るため）。"""
+    from . import decisions as records
     from . import rules as rulebook
     from .expr import Env
 
@@ -301,7 +334,9 @@ def _table_rules(spec: Spec, report: Report, t) -> str:
         for r in mine:
             bad = f"表「{t.id}」がルール「{r.id}」に反しています" in broken
             mark = '<span class="reject">反している</span>' if bad else '<span class="muted">表と合っている</span>'
-            items.append(f"<li><b>{escape(r.id)}</b> {mark}</li>")
+            ds = [d.id for d in records.current(spec) if f"ルール:{r.id}" in d.applies_to]
+            link = "".join(f' <a href="#{escape(i)}">{escape(i)}</a>' for i in ds)
+            items.append(f"<li><b>{escape(r.id)}</b> {mark}{link}</li>")
         out.append(f"<h4>この表の根底にあるルール</h4><ul class='plain ensures'>{''.join(items)}</ul>")
     g = rulebook.grid(spec, Env(spec), t)
     if g is not None and (g.num or len(g.cols) > 1):

@@ -39,6 +39,7 @@ MONITORED = "監視"
 
 # monitor.watch が関数に付ける印（監視している項目の id）
 WATCH_ATTR = "__specgap_watch__"
+DELEGATE_ATTR = "__specgap_decide__"  # decide.table / decide.machine で判断に任せた関数
 
 RANDOM_CASES = 300
 MAX_GRID = 2000
@@ -132,7 +133,14 @@ def verify(spec: Spec, impl: str | Path | None = None, base: Spec | None = None)
     module = _load_module(path)
     v = _Verifier(spec, module, mapping.tables if mapping else {}, mapping.machines if mapping else {},
                   mapping.operations if mapping else {})
-    g = Guarantee(module=path.name, items=v.run())
+    from . import decide
+
+    saved = decide._state  # 判断に任せた関数をテストで呼べるよう、確かめている間はこの仕様を使う
+    decide.use(spec)
+    try:
+        g = Guarantee(module=path.name, items=v.run())
+    finally:
+        decide._state = saved
     if base is not None and base.implementation is not None:
         try:
             before = verify(base)
@@ -363,6 +371,9 @@ class _Verifier:
             item.level, item.basis = VIOLATION, f"関数 {name} が実装ファイルにありません"
             return item
         item.monitored = getattr(fn, WATCH_ATTR, None) == t.id
+        if getattr(fn, DELEGATE_ATTR, None) == t.id and not any(v == UNSPECIFIED for r in t.rows for v in r.then.values()):
+            item.level, item.basis = PROVED, "判断に任せている（表をそのまま実行するので、構造上一致）"
+            return item
         raw = inspect.unwrap(fn)
 
         notes = []
@@ -548,6 +559,9 @@ class _Verifier:
             item.level, item.basis = VIOLATION, f"関数 {name} が実装ファイルにありません"
             return item
         item.monitored = getattr(fn, WATCH_ATTR, None) == m.id
+        if getattr(fn, DELEGATE_ATTR, None) == m.id:
+            item.level, item.basis = PROVED, "判断に任せている（状態機械をそのまま実行するので、構造上一致）"
+            return item
         raw = inspect.unwrap(fn)
         for s in m.states:
             for ev in m.events:
@@ -581,6 +595,16 @@ class _Verifier:
             fns.append((t, inspect.unwrap(fn), getattr(fn, WATCH_ATTR, None) == t.id))
         item.function = "、".join(self.tables[t.id] for t in tables)
         item.monitored = all(w for _, _, w in fns)
+        delegated = all(getattr(self.function(self.tables[t.id]), DELEGATE_ATTR, None) == t.id
+                        and not any(v == UNSPECIFIED for r in t.rows for v in r.then.values()) for t in tables)
+        if delegated:
+            from .checks import check
+
+            broken = [f for f in check(self.spec).findings if f.check == "整合" and f"性質「{e.id}」" in f.title]
+            if not broken:
+                item.level = PROVED
+                item.basis = "判断に任せた表がこの性質を満たすことを、表の検査で証明済み"
+                return item
         compiled = compile_expr(e.expr, self.env)
 
         def holds(inputs: dict[str, str]):

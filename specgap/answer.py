@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import io
 import json
+import re
+from datetime import date
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -55,6 +57,7 @@ class Result:
     text: str  # 新しい版の正本（YAML）
     applied: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    decisions: list[str] = field(default_factory=list)  # 加えた判断の id
 
 
 def questions(report: Report) -> list[Question]:
@@ -134,8 +137,12 @@ def load_answers(path: str | Path) -> tuple[str | None, dict[int, object]]:
 
 
 def apply(spec_path: str | Path, spec: Spec, report: Report, answers: dict[int, object],
-          name: str | None = None) -> Result:
-    """答えを正本に書き込んだ新しい版を返す。元のファイルの書式とコメントは保つ。"""
+          name: str | None = None, said: dict[int, str] | None = None, at: str | None = None) -> Result:
+    """答えを正本に書き込んだ新しい版を返す。元のファイルの書式とコメントは保つ。
+
+    答えを1つ反映するたびに、判断（decisions）を1つ加える。判断には、問い・答え・人の言葉と、
+    正本のどこに効いているか（applies_to）を残す。
+    """
     yaml = _yaml()
     doc = yaml.load(Path(spec_path).read_text(encoding="utf-8"))
     qs = {q.no: q for q in questions(report)}
@@ -149,13 +156,66 @@ def apply(spec_path: str | Path, spec: Spec, report: Report, answers: dict[int, 
             res.errors.append(f"問い {no} はありません")
             continue
         try:
-            res.applied.append(f"問い {no}：{_apply_one(doc, spec, env, q.slot, ans)}")
+            msg = _apply_one(doc, spec, env, q.slot, ans)
         except SpecError as e:
             res.errors.append(f"問い {no}：{e}")
+            continue
+        did = _decide(doc, q, ans, msg, (said or {}).get(no, ""), at or date.today().isoformat())
+        res.applied.append(f"問い {no}：{msg}（判断 {did}）")
+        res.decisions.append(did)
     out = io.StringIO()
     yaml.dump(doc, out)
     res.text = out.getvalue()
     return res
+
+
+def _decide(doc, q: Question, ans, msg: str, said: str, at: str) -> str:
+    """反映した答えを判断として正本に加え、その id を返す。"""
+    if doc.get("decisions") is None:
+        doc["decisions"] = []
+    nums = [int(m.group(1)) for d in doc["decisions"] if (m := re.fullmatch(r"D(\d+)", str(d.get("id", ""))))]
+    did = f"D{max(nums, default=0) + 1}"
+    title = msg[len("ルール「"):-1] if msg.startswith("ルール「") and msg.endswith("」") else msg
+    d = CommentedMap({"id": did, "at": at, "title": title, "question": q.question,
+                      "answer": ans if isinstance(ans, str) else json.dumps(ans, ensure_ascii=False)})
+    if said:
+        d["said"] = said
+    d["applies_to"] = _refs(doc, q.slot, msg)
+    doc["decisions"].append(d)
+    return did
+
+
+def _refs(doc, slot: dict, msg: str) -> list[str]:
+    """答えが正本のどこに効いたか。"""
+    t = slot["type"]
+    if t == "gap":
+        return [f"表:{slot['table']}:{slot['when']}"]
+    if t == "overlap":
+        rows = _find(doc.get("tables"), slot["table"], "表")["rows"]
+        return [f"表:{slot['table']}:{rows[r - 1]['when']}" for r in slot["rows"]]
+    if t == "state":
+        return [f"状態機械:{slot['machine']}:{slot['state']}:{slot['event']}"]
+    if t == "failure":
+        return [f"操作:{slot['operation']}:失敗:{slot['key']}"]
+    if t == "interrupt":
+        return [f"操作:{slot['operation']}:途中停止"]
+    if t == "await":
+        return [f"操作:{slot['operation']}:手順:await:{e}" for e in slot["effects"]]
+    if t == "confirm":
+        return [f"操作:{slot['operation']}:手順:confirm:{msg.rsplit('確認「', 1)[-1].rstrip('」')}"]
+    if t == "data_class":
+        return [f"データ:{slot['item']}"]
+    if t == "idempotency":
+        return [f"外部作用:{slot['effect']}:二重実行"]
+    if t == "data_over":
+        return [f"外部作用:{slot['effect']}:渡すデータ"] if "渡さない" in msg else [f"許可:{slot['system']}"]
+    if t == "derive":
+        if "穴を1つずつ" in msg:
+            return [f"表:{slot['table']}:by_cells"]
+        return [f"表:{slot['table']}:{r['when']}" for r in slot["rows"]]
+    if t.startswith("rule_"):
+        return [f"ルール:{msg.split('「', 1)[1].rsplit('」', 1)[0]}"]
+    return []
 
 
 def _yaml() -> YAML:

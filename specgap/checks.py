@@ -73,6 +73,7 @@ class _Checker:
             ("決定表の網羅と排他", self.check_tables),
             ("性質の矛盾と決定表との整合", self.check_ensures),
             ("ルールと決定表の整合", self.check_rules),
+            ("判断の記録", self.check_decisions),
             ("状態と出来事の網羅", self.check_machines),
             ("失敗の扱いの網羅", self.check_failures),
             ("ユースケースと画面の整合", self.check_usecases),
@@ -320,6 +321,27 @@ class _Checker:
                     ERROR, "ルール", f"表「{t.id}」がルール「{rule.id}」に反しています",
                     detail=f"{self._fmt(a)} のとき {self._fmt(va)}、{self._fmt(b)} のとき {self._fmt(vb)} です。",
                     question="表とルールのどちらが正しいですか", example=b, ref=t.id,
+                )
+
+    # ---- 判断 ----
+
+    def check_decisions(self):
+        from . import decisions
+
+        ids = [d.id for d in self.spec.decisions]
+        for d in self.spec.decisions:
+            if ids.count(d.id) > 1:
+                self.report.add(ERROR, "判断", f"判断 {d.id} が2つあります")
+            for x in d.supersedes:
+                if x not in ids:
+                    self.report.add(ERROR, "判断", f"判断 {d.id} が置き換える {x} がありません")
+        for d in decisions.current(self.spec):
+            gone = [r for r in d.applies_to if not decisions.exists(self.spec, r)]
+            if gone:
+                self.report.add(
+                    WARNING, "判断", f"判断 {d.id}（{d.title or d.answer}）が効いていた場所が正本にありません",
+                    detail="消えた場所：" + "、".join(gone) + "。判断を手で書き換えたか、あとの変更で消えた可能性があります。",
+                    question=f"{d.id} は今も有効ですか。置き換える判断はありますか",
                 )
 
     # ---- 状態機械 ----

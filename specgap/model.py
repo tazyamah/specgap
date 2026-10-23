@@ -72,6 +72,26 @@ class Rule:
     then: str = ""
 
 
+@dataclass
+class Decision:
+    """人が問いに答えて決めたこと（ADR に当たる）。正本のどこに効いているかを applies_to に持つ。
+
+    applies_to の書き方：
+      表:<表>:<行の条件>  表:<表>:by_cells  ルール:<id>  状態機械:<id>:<状態>:<出来事>
+      操作:<id>:失敗:<作用.失敗>  操作:<id>:途中停止  操作:<id>:手順:<種類>:<対象>
+      データ:<項目>  外部作用:<名前>:二重実行  外部作用:<名前>:渡すデータ  許可:<システム>
+    """
+    id: str
+    question: str
+    answer: str
+    said: str = ""
+    at: str = ""
+    applies_to: list[str] = field(default_factory=list)
+    assumptions: list[str] = field(default_factory=list)
+    supersedes: list[str] = field(default_factory=list)  # 置き換えた判断の id
+    title: str = ""
+
+
 TRENDS = ("減る", "増える", "関係ない", "場合による")
 UNDECIDED = "決めない"
 SAME = "同じ"
@@ -183,6 +203,7 @@ class Spec:
     tables: list[Table] = field(default_factory=list)
     ensures: list[Ensure] = field(default_factory=list)
     rules: list[Rule] = field(default_factory=list)
+    decisions: list[Decision] = field(default_factory=list)
     machines: list[Machine] = field(default_factory=list)
     effects: dict[str, list[str]] = field(default_factory=dict)  # 効果名 → 失敗の種類
     operations: list[Operation] = field(default_factory=list)
@@ -241,6 +262,14 @@ def parse(data: Any, base_dir: str | Path = ".") -> Spec:
 
     for r in data.get("rules") or []:
         spec.rules.append(_rule(r, spec))
+
+    for d in data.get("decisions") or []:
+        spec.decisions.append(Decision(
+            id=str(d["id"]), question=str(d.get("question", "")), answer=str(d.get("answer", "")),
+            said=str(d.get("said", "")), at=str(d.get("at", "")),
+            applies_to=[str(x) for x in d.get("applies_to") or []],
+            assumptions=[str(x) for x in d.get("assumptions") or []],
+            supersedes=_ids(d.get("supersedes")), title=str(d.get("title", ""))))
 
     for m in data.get("machines") or []:
         spec.machines.append(_machine(m))
@@ -332,6 +361,12 @@ def parse(data: Any, base_dir: str | Path = ".") -> Spec:
         )
     spec.policy = {str(k): str(v) for k, v in (data.get("policy") or {}).items()}
     return spec
+
+
+def _ids(v: Any) -> list[str]:
+    if v is None or v == "":
+        return []
+    return [str(x) for x in v] if isinstance(v, list) else [str(v)]
 
 
 def _rule(r: dict, spec: Spec) -> Rule:
