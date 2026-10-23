@@ -6,10 +6,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 from html import escape
 
 from . import svg
+from .answer import questions
 from .checks import ERROR, INFO, WARNING, Report
 from .diff import ADDED, CHANGED, REMOVED, SpecDiff
 from .examples import Examples
@@ -49,14 +51,19 @@ def render(spec: Spec, report: Report, *, base: Spec | None = None, change: Spec
     # ---- 答えてほしいこと ----
     if errors or warns:
         cards = []
+        numbered = {json.dumps(q.slot, ensure_ascii=False, sort_keys=True): q for q in questions(report)}
         for f in errors + warns:
             label, cls = _SEVERITY[f.severity]
             q = f'<p class="q">{escape(f.question)}</p>' if f.question else ""
             ex = f'<div class="kvs">{_kv(f.example)}</div>' if f.example else ""
             detail = f'<p class="detail">{escape(f.detail)}</p>' if f.detail else ""
+            qn = numbered.get(json.dumps(f.slot, ensure_ascii=False, sort_keys=True)) if f.slot else None
+            no = f'<span class="qno">問い {qn.no}</span>' if qn else ""
+            how = (f'<dl class="how"><dt>答え方</dt><dd>{escape(qn.how)}</dd>'
+                   f'<dt>答えると</dt><dd>{escape(prettify(qn.effect))}</dd></dl>') if qn else ""
             cards.append(
-                f'<article class="card {cls}"><span class="chip {cls}">{label}</span>'
-                f'<p class="ctx">{escape(f.title)}</p>{q}{ex}{detail}</article>'
+                f'<article class="card {cls}"><div class="chips"><span class="chip {cls}">{label}</span>{no}</div>'
+                f'<p class="ctx">{escape(f.title)}</p>{q}{ex}{detail}{how}</article>'
             )
         gaps = [f for f in errors if f.check != "実装"]
         impl_errors = len(errors) - len(gaps)
@@ -547,6 +554,11 @@ nav a:hover, nav a:focus-visible { border-color: var(--accent); outline: none; }
 .card .ctx { margin: 0; font-size: .82rem; color: var(--muted); }
 .card .q { margin: 0; font-size: 1.05rem; font-weight: 600; }
 .card .detail { margin: 0; font-size: .85rem; color: var(--muted); }
+.chips { display: flex; gap: 8px; align-items: center; }
+.qno { font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.how { margin: 4px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: .8rem; border-top: 1px dashed var(--line); padding-top: 8px; width: 100%; }
+.how dt { color: var(--muted); white-space: nowrap; }
+.how dd { margin: 0; }
 .kvs { display: flex; flex-wrap: wrap; gap: 6px; }
 .kv { display: inline-flex; font-size: .8rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
 .kv .k { padding: 1px 6px; background: var(--bg); color: var(--muted); }

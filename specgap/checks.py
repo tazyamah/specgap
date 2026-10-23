@@ -30,6 +30,7 @@ class Finding:
     question: str = ""
     example: dict[str, str] = field(default_factory=dict)
     ref: str = ""  # 関係する表・状態機械・操作の id
+    slot: dict = field(default_factory=dict)  # 答えを書き込む正本の場所（answer.py が使う）
 
 
 @dataclass
@@ -152,12 +153,14 @@ class _Checker:
         uncovered = z3.And(self.dom_in, z3.Not(z3.Or([c.expr for c in conds]) if conds else z3.BoolVal(False)))
         atoms = [a for c in conds for a in c.atoms]
         names = sorted({n for c in conds for n in c.names}, key=self._input_order)
-        for model in self._cells(uncovered, atoms, names):
+        for model, cell in self._cells(uncovered, atoms, names):
             ex = self._example(model, names)
+            when = self._box(z3.And(uncovered, cell), model, names)
             self.report.add(
                 ERROR, "網羅", f"表「{t.id}」のどの行にも当たらない入力があります",
                 question=f"{self._fmt(ex)} のとき、どうしますか",
                 example=ex, ref=t.id,
+                slot={"type": "gap", "table": t.id, "when": when, "outputs": t.outputs},
             )
 
     def _overlaps(self, t: Table, conds: list[Compiled]):
@@ -178,6 +181,7 @@ class _Checker:
                     detail=note,
                     question=f"{self._fmt(ex)} のとき、どちらの行を使いますか",
                     example=ex, ref=t.id,
+                    slot={"type": "overlap", "table": t.id, "rows": [ri.index, rj.index]},
                 )
 
     def _same_results(self, t: Table, a, b, region) -> bool:
@@ -305,6 +309,7 @@ class _Checker:
                         ERROR, "状態", f"状態機械「{m.id}」で、状態 {s} に出来事 {ev} が来たときの扱いがありません",
                         question=f"{s} のときに {ev} が来たら、どの状態にしますか。それとも拒否しますか",
                         example={"状態": s, "出来事": ev},
+                        slot={"type": "state", "machine": m.id, "state": s, "event": ev, "states": m.states},
                     )
                 elif len(ts) + len(rs) > 1:
                     targets = [t.dst for t in ts] + (["拒否"] if rs else [])
@@ -347,6 +352,7 @@ class _Checker:
                     self.report.add(
                         ERROR, "失敗", f"操作「{op.id}」で {eff} の「{fail}」が起きたときの扱いがありません",
                         question=f"{op.id} の途中で {eff} が「{fail}」になったら、どうしますか",
+                        slot={"type": "failure", "operation": op.id, "key": key},
                     )
             for key in op.on_failure:
                 if key not in expected:
@@ -437,7 +443,7 @@ class _Checker:
                 self.report.add(ERROR, "取り消し", f"取り消せない外部作用 {name} に、二重実行を防ぐ仕組みがありません",
                                 detail="通信の失敗で再試行したとき、同じ依頼が2回届く可能性があります。",
                                 question=f"同じ {name} が2回届いても1回分しか実行されないよう、何で見分けますか（注文番号など）",
-                                ref=name)
+                                ref=name, slot={"type": "idempotency", "effect": name, "items": e.sends})
             if e.reversible == "compensate" and e.compensate not in spec.effect_info:
                 self.report.add(ERROR, "取り消し", f"外部作用 {name} を埋め合わせる手段 {e.compensate or '（なし）'} が定義されていません",
                                 question=f"{name} を取り消したいときは、何をしますか", ref=name)
@@ -455,7 +461,8 @@ class _Checker:
             cls = spec.data_items.get(item)
             if cls is None:
                 self.report.add(ERROR, "データ", f"データ項目 {item} の区分が決まっていません",
-                                question=f"{item} は {'・'.join(spec.data_classes) or '何'} のどれにあたりますか", ref=name)
+                                question=f"{item} は {'・'.join(spec.data_classes) or '何'} のどれにあたりますか", ref=name,
+                                slot={"type": "data_class", "item": item, "classes": spec.data_classes})
             elif spec.data_classes and cls not in spec.data_classes:
                 self.report.add(ERROR, "データ", f"データ項目 {item} の区分 {cls} が定義されていません", ref=name)
         allowed = spec.data_allow.get(e.system)
@@ -470,7 +477,8 @@ class _Checker:
                 self.report.add(ERROR, "データ", f"{name} で {cls}（{item}）を {e.system} に渡しています",
                                 detail=f"{e.system} に渡してよい区分は {'・'.join(allowed) or 'ありません'} です。",
                                 question=f"{item} を {e.system} に渡す必要はありますか。渡すなら、許可する区分を変えますか",
-                                ref=name)
+                                ref=name,
+                                slot={"type": "data_over", "effect": name, "item": item, "system": e.system, "class": cls})
 
     def _steps(self, op):
         spec = self.spec
@@ -501,12 +509,14 @@ class _Checker:
                     detail=f"手順{i}：{st.target}",
                     question=f"{'・'.join(pending)} が失敗しても「{st.target}」のままでよいですか。結果を待ちますか",
                     ref=ref,
+                    slot={"type": "await", "operation": op.id, "effects": list(pending), "update": st.target},
                 )
             if st.kind in ("call", "send"):
                 if e.reversible in ("no", "compensate") and not confirmed:
                     self.report.add(
                         WARNING, "手順", f"操作「{op.id}」で、取り消せない {st.target} の前に確認の手順がありません",
                         question=f"{st.target} を実行する前に、内容を確認する手順を挟みますか", ref=ref,
+                        slot={"type": "confirm", "operation": op.id, "kind": st.kind, "effect": st.target},
                     )
                 if st.kind == "send":
                     pending.append(st.target)
@@ -518,6 +528,7 @@ class _Checker:
                     ERROR, "手順", f"操作「{op.id}」が {st.target} の後で止まったときの扱いがありません",
                     detail="外部ではすでに作用が起きているので、やり直すと二重になり、放っておくと途中の状態が残ります。",
                     question=f"「{op.id}」が {st.target} の直後で止まったら、再開したときにどうしますか", ref=ref,
+                    slot={"type": "interrupt", "operation": op.id},
                 )
                 interrupt_reported = True
         # 失敗の扱いがすべて書かれていれば、失敗に気づく手段はあるとみなす
@@ -567,11 +578,81 @@ class _Checker:
             model = self._simple_model(z3.And(formula, *blocks), names)
             if model is None:
                 return
-            yield model
             sig = [a == model.eval(a, model_completion=True) for a in atoms]
+            yield model, z3.And(sig) if sig else z3.BoolVal(True)
             if not sig:
                 return
             blocks.append(z3.Not(z3.And(sig)))
+
+    def _box(self, region, model, names: list[str]) -> str:
+        """例を含み、region に丸ごと収まる条件を、仕様の式の書き方で返す。
+
+        列挙値と真偽値は例の値に固定し、整数は例の値から region を出ない範囲まで広げる。
+        こうしてできた条件を表の行にすれば、ほかの行と重ならない。
+        """
+        fixed = []
+        for n in names:
+            v = self.env.vars[n]
+            if not z3.is_int(v):
+                fixed.append(v == model.eval(v, model_completion=True))
+        ranges: dict[str, list[int]] = {}
+        for n in names:
+            v = self.env.vars[n]
+            if z3.is_int(v):
+                x = model.eval(v, model_completion=True).as_long()
+                ranges[n] = [x, x]
+        var = self.spec.inputs
+
+        def inside(box) -> bool:
+            # box の中のすべての入力が region に入るか（入らない入力が無いか）
+            cs = list(fixed)
+            for n, (lo, hi) in box.items():
+                cs += [self.env.vars[n] >= lo, self.env.vars[n] <= hi]
+            s = z3.Solver()
+            s.add(self.dom_in, *cs, z3.Not(region))
+            return s.check() == z3.unsat
+
+        for n in ranges:
+            lo_lim = var[n].min if var[n].min is not None else -10**9
+            hi_lim = var[n].max if var[n].max is not None else 10**9
+            for side, limit in ((0, lo_lim), (1, hi_lim)):
+                good, bad = ranges[n][side], limit
+                trial = dict(ranges)
+                trial[n] = list(ranges[n])
+                trial[n][side] = limit
+                if inside(trial):
+                    ranges[n][side] = limit
+                    continue
+                while abs(bad - good) > 1:  # 二分探索で広げられる端を探す
+                    mid = (good + bad) // 2
+                    trial[n][side] = mid
+                    if inside(trial):
+                        good = mid
+                    else:
+                        bad = mid
+                ranges[n][side] = good
+        parts = []
+        for n in names:
+            v = self.env.vars[n]
+            if n in ranges:
+                lo, hi = ranges[n]
+                at_min = var[n].min is not None and lo <= var[n].min or var[n].min is None and lo <= -10**9
+                at_max = var[n].max is not None and hi >= var[n].max or var[n].max is None and hi >= 10**9
+                if lo == hi:
+                    parts.append(f"{n} == {lo}")
+                elif at_min and at_max:
+                    continue
+                elif at_min:
+                    parts.append(f"{n} <= {hi}")
+                elif at_max:
+                    parts.append(f"{n} >= {lo}")
+                else:
+                    parts.append(f"{lo} <= {n} <= {hi}")
+            elif z3.is_bool(v):
+                parts.append(n if z3.is_true(model.eval(v, model_completion=True)) else f"not {n}")
+            else:
+                parts.append(f"{n} == {_show(model.eval(v, model_completion=True))}")
+        return " and ".join(parts) or "True"
 
     def _example(self, model, names: list[str]) -> dict[str, str]:
         return {n: _show(model.eval(self.env.vars[n], model_completion=True)) for n in names}
