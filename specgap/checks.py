@@ -476,7 +476,19 @@ class _Checker:
                     self.report.add(ERROR, "画面", f"画面の流れ「{f.id}」で、{st.src} の「{st.action}」の行き先が複数あります",
                                     question="どの画面に進みますか")
                 seen.add(key)
-            reach, frontier = {f.start}, [f.start]
+            for e in f.entries:
+                info = spec.effect_info.get(e.via)
+                if info is None:
+                    self.report.add(ERROR, "画面", f"画面の流れ「{f.id}」の入口が、定義されていない連携 {e.via} を指しています",
+                                    question=f"{e.dst} を開くリンクは、どの連携で渡しますか")
+                elif e.link is None:
+                    self.report.add(WARNING, "画面", f"画面の流れ「{f.id}」の入口：{e.via} で、{e.dst} を開くリンクにあたるデータが決まっていません",
+                                    question=f"{e.via} で渡すデータに、{e.dst} を開くリンクを加えますか", ref=e.via)
+                elif e.link not in info.sends:
+                    self.report.add(ERROR, "画面", f"画面の流れ「{f.id}」の入口：{e.via} で {e.dst} を開くはずの {e.link} を、{e.via} で渡していません",
+                                    question=f"{e.via} で渡すデータに {e.link} を加えますか", ref=e.via)
+            starts = [f.start, *[e.dst for e in f.entries]]
+            reach, frontier = set(starts), list(starts)
             while frontier:
                 cur = frontier.pop()
                 for st in f.steps:
@@ -485,11 +497,18 @@ class _Checker:
                         frontier.append(st.dst)
             for name in f.screens:
                 if name not in reach:
-                    self.report.add(WARNING, "画面", f"画面の流れ「{f.id}」の画面 {name} には、最初の画面からたどり着けません")
+                    self.report.add(WARNING, "画面", f"画面の流れ「{f.id}」の画面 {name} には、最初の画面からも入口からもたどり着けません")
                 if name not in f.final and not any(st.src == name for st in f.steps):
                     self.report.add(WARNING, "画面", f"画面の流れ「{f.id}」の画面 {name} から先へ進む操作も戻る操作もありません",
                                     question=f"{name} を見たあと、利用者はどこへ行けますか")
         if spec.screen_flows:
+            # 連携でリンクを渡しているのに、どの画面を開くか決まっていない
+            linked = {(e.via, e.link) for f in spec.screen_flows for e in f.entries}
+            for name, info in spec.effect_info.items():
+                for item in info.sends:
+                    if item.endswith("リンク") and (name, item) not in linked:
+                        self.report.add(WARNING, "画面", f"{name} で渡す {item} から、どの画面を開くかが決まっていません",
+                                        question=f"{item} を開くと、どの画面の流れのどの画面が出ますか", ref=name)
             for u in spec.usecases:
                 if u.id not in reached_ucs:
                     self.report.add(WARNING, "画面", f"ユースケース「{u.id}」を始める画面上の操作がありません",

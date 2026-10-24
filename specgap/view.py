@@ -237,11 +237,22 @@ def _screens(f, bf) -> str:
         for n in f.screens:
             if n not in bf.screens:
                 kinds[n] = svg.ADDED
-    diagram = svg.flow(nodes, edges, f.start, f.final, kinds, f"画面の流れ {f.id}")
+    # 入口（通知メールのリンクなど）は、流れの外の点線の箱から画面へ入る矢印にする
+    base_entries = {(e.via, e.dst) for e in bf.entries} if bf else None
+    outside = []
+    for e in f.entries:
+        label = f"✉ {e.via}"
+        outside.append(label)
+        nodes.append(label)
+        kind = svg.ADDED if base_entries is not None and (e.via, e.dst) not in base_entries else svg.SAME
+        edges.append(svg.Edge(label, "リンク", e.dst, kind))
+    diagram = svg.flow(nodes, edges, f.start, f.final, kinds, f"画面の流れ {f.id}", outside=outside)
     ucs = [s for s in f.steps if s.usecase]
     note = "".join(f"<li>「{escape(s.action)}」で、ユースケース「{escape(s.usecase)}」が始まります</li>" for s in ucs)
+    note += "".join(f"<li>{escape(e.via)} で渡すリンク{f'（{escape(e.link)}）' if e.link else ''}から、最初の画面を通らずに {escape(e.dst)} を開きます</li>" for e in f.entries)
     return (
-        '<p class="lead">画面と、画面を移る操作です。左端の矢印が最初の画面、二重枠が終わりの画面です。</p>'
+        '<p class="lead">画面と、画面を移る操作です。左端の矢印が最初の画面、二重枠が終わりの画面です。'
+        + ("点線の箱は、通知メールなど流れの外から画面を直接開く入口です。" if f.entries else "") + '</p>'
         f'<div class="scroll figure">{diagram}</div>'
         + (f'<ul class="plain">{note}</ul>' if note else "")
     )
@@ -672,6 +683,7 @@ svg.diagram text { fill: var(--ink); }
 svg.diagram .node rect { fill: var(--surface); stroke: var(--muted); stroke-width: 1.25; }
 svg.diagram .node rect.inner { fill: none; stroke-width: 1; }
 svg.diagram .node.start rect { stroke: var(--accent); stroke-width: 2; }
+svg.diagram .node.outside rect { fill: none; stroke-dasharray: 3 3; }
 svg.diagram .node.added rect { fill: var(--add-soft); stroke: var(--add); }
 svg.diagram .node.removed rect { fill: var(--remove-soft); stroke: var(--remove); stroke-dasharray: 4 3; }
 svg.diagram .edge { fill: none; stroke: var(--muted); stroke-width: 1.25; }
