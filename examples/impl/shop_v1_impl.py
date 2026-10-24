@@ -8,3 +8,46 @@ from specgap import decide
 
 refund_amount = decide.table("返金額の決定")
 next_order_state = decide.machine("注文")
+
+
+# ---- 外部とのやりとり ----
+# 失敗の扱いを手順で書いたもの（決済API の通信エラー）は、手順どおりに動くかまで機械が確かめる。
+# 文章だけの扱いは、扱った記録（ctx.handled）を残し、中身は担当者の作業や別の処理に任せる。
+
+from specgap.operations import EffectFailure  # noqa: E402
+
+LOG = "通信エラーと照会の結果をログに残す"
+
+
+def execute_refund(ctx):
+    if not ctx.confirm("サポート担当が返金額を確認して承認する"):
+        return
+    ctx.update("承認した返金額を記録し、注文を返金処理中にする")
+    d = ctx.data
+
+    def pay():
+        ctx.call("決済API", 注文番号=d["注文番号"], 返金額=d["返金額"], 決済ID=d["決済ID"])
+
+    try:
+        pay()
+    except EffectFailure as f:
+        ctx.handled(f.key)
+        if f.key != "決済API.通信エラー":
+            return  # タイムアウト・拒否は文章の扱い（照会して保留、返金失敗として通知）
+        try:
+            got = ctx.call("返金状況の照会", 注文番号=d["注文番号"])  # 照会せずに再試行すると二重に返金しうる
+        except EffectFailure as g:
+            ctx.handled(g.key)  # 保留にして時間をおいて照会し直す
+            return
+        ctx.update(LOG)
+        if got["結果"] == "未返金":
+            try:
+                pay()  # 再試行は1回だけ（D40）
+            except EffectFailure:
+                ctx.update("返金失敗として記録し、担当者に通知する")
+                return
+    ctx.update("注文を返金済みにする")
+    try:
+        ctx.send("返金完了メール", メールアドレス=d["メールアドレス"], 氏名=d["氏名"], 返金額=d["返金額"])
+    except EffectFailure as f:
+        ctx.handled(f.key)  # 送れなかったことを記録するだけ

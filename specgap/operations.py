@@ -21,7 +21,9 @@ ctx は仕様の uses にある外部作用しか呼ばせず、仕様の sends 
 - 途中停止：各手順の直後で止め、もう一度動かしたとき、残りの手順をやり終え、取り消せない作用を二重に実行しないか
 どの筋書きでも、使ってよい外部作用だけを使い、仕様どおりのデータだけを渡しているかを確かめる。
 
-失敗の扱いの中身（「照会してから再試行する」などの文章）は機械では確かめられない。
+失敗の扱いを手順（do）でも書いたものは、失敗のあとの動きが手順どおりかも確かめる（試作9）。
+再試行は「再試行で直る」「直らない」の両方、照会の結果で分けるものは結果の種類ごとに筋書きを分ける。
+文章だけの扱い（「照会してから再試行する」など）は、扱った記録（ctx.handled）があるかまでしか確かめられない。
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
-from .model import Operation, Spec
+from .model import Handle, Operation, Spec, _flat
 
 
 class EffectFailure(Exception):
@@ -57,6 +59,10 @@ class Scenario:
     decline: int | None = None  # 何番目の確認（0始まり）で断るか
     failure: tuple[str, str] | None = None  # (作用名, 失敗名)
     stop_after: int | None = None  # 何手順目の直後で止めるか（1始まり）
+    retry_ok: bool | None = None  # 失敗した作用をもう一度行ったとき、直るか
+    outcomes: dict[str, str] = field(default_factory=dict)  # 照会などの作用 → 返す結果
+    expect: list[tuple[str, str]] | None = None  # 失敗のあと、仕様の手順どおりならこう動く
+    lead: tuple[str, str] | None = None  # 失敗の扱いの中でだけ使う作用の失敗は、先にこの失敗を起こして扱いに入る
 
 
 class Adapter:
@@ -142,6 +148,7 @@ class World(Adapter):
         self.confirms = 0
         self.steps = 0
         self.failed = False
+        self.led = False
         self.executions: list[tuple[str, str | None]] = []  # (作用名, 二重実行を防ぐキーの値)
         self.done: set[tuple[str, str | None]] = set()
         self.sent: dict[str, dict] = {}
@@ -151,14 +158,20 @@ class World(Adapter):
     def _step(self):
         self.steps += 1
         if self.sc.stop_after is not None and self.steps == self.sc.stop_after:
-            self.sc = Scenario(self.sc.name, self.sc.decline, self.sc.failure, None)  # 止めるのは1回だけ
+            self.sc = Scenario(self.sc.name, self.sc.decline, self.sc.failure, None,
+                               self.sc.retry_ok, self.sc.outcomes, self.sc.expect, self.sc.lead)  # 止めるのは1回だけ
             raise _Interrupted()
 
     def _fail(self, effect: str, point: str):
+        lead = self.sc.lead
+        if lead and lead[0] == effect and not self.led and point == _failure_point(self.spec, self.op, effect):
+            self.led = True
+            raise EffectFailure(*lead)
         f = self.sc.failure
-        if f and f[0] == effect and not self.failed and point == _failure_point(self.spec, self.op, effect):
-            self.failed = True
-            raise EffectFailure(*f)
+        if f and f[0] == effect and point == _failure_point(self.spec, self.op, effect):
+            if not self.failed or self.sc.retry_ok is False:  # 直らない筋書きでは、何度行っても失敗する
+                self.failed = True
+                raise EffectFailure(*f)
 
     def confirm(self, text: str) -> bool:
         i = self.confirms
@@ -178,6 +191,8 @@ class World(Adapter):
             self.done.add(key)
         self.sent[effect] = data
         got = {} if kind == "send" else _receives(self.spec, effect)
+        if info and info.outcomes and kind == "call":
+            got["結果"] = self.sc.outcomes.get(effect, info.outcomes[0])
         self._step()
         return got
 
@@ -203,6 +218,7 @@ def _receives(spec: Spec, effect: str) -> dict:
 def _failure_point(spec: Spec, op: Operation, effect: str) -> str:
     """失敗が実装に届く場所：応答を待つ作用は call、結果を待つ手順があれば await、なければ send。"""
     kinds = [s.kind for s in op.steps if s.target == effect]
+    kinds += ["call" if h.kind == "case" else h.kind for h in _handles_of(op) if h.target == effect]
     if "call" in kinds:
         return "call"
     if "await" in kinds:
@@ -236,10 +252,69 @@ def scenarios(spec: Spec, op: Operation) -> list[Scenario]:
         out.append(Scenario(f"確認を断る（{s.target}）", decline=i))
     for effect in op.uses:
         for kind in spec.effects.get(effect, []):
-            out.append(Scenario(f"{effect}.{kind}", failure=(effect, kind)))
+            key = f"{effect}.{kind}"
+            if key in op.handlers:
+                for label, choice, seq in expand(spec, op, effect, op.handlers[key]):
+                    out.append(Scenario(f"{key}{label}", failure=(effect, kind), expect=seq, **choice))
+            else:
+                out.append(Scenario(key, failure=(effect, kind), lead=_lead(op, effect)))
     for k in range(1, len(op.steps)):
         out.append(Scenario(f"{k}番目の手順（{_label(op.steps[k - 1])}）の直後で止まる", stop_after=k))
     return out
+
+
+def _handles_of(op: Operation):
+    for hs in op.handlers.values():
+        yield from _flat(hs)
+
+
+def _lead(op: Operation, effect: str) -> tuple[str, str] | None:
+    """仕様の手順になく、失敗の扱いの中でだけ使う作用なら、その扱いに入るための失敗。"""
+    if any(s.target == effect for s in op.steps):
+        return None
+    for key, hs in op.handlers.items():
+        if any(h.target == effect for h in _flat(hs)):
+            eff, _, kind = key.partition(".")
+            return eff, kind
+    return None
+
+
+def _rest(op: Operation, effect: str) -> list[tuple[str, str]]:
+    """失敗した手順より後の、仕様の手順。"""
+    point = _failure_point(None, op, effect)
+    idx = next((i for i, s in enumerate(op.steps) if (s.kind, s.target) == (point, effect)), None)
+    return [] if idx is None else [(s.kind, s.target) for s in op.steps[idx + 1:]]
+
+
+def expand(spec: Spec, op: Operation, failed: str, hs: list[Handle]):
+    """手順で書いた扱いを、分かれ道ごとの筋書きにする。(名前, Scenario への選択, 失敗のあとの動き) の並び。"""
+    point = _failure_point(spec, op, failed)
+    rest = _rest(op, failed)
+
+    def walk(hs, seq, choice, label):
+        for i, h in enumerate(hs):
+            if h.kind in ("confirm", "call", "send", "await", "update"):
+                seq = seq + [(h.kind, h.target)]
+            elif h.kind == "resume":
+                yield label, choice, seq + rest
+                return
+            elif h.kind == "retry":
+                yield from ([] if choice.get("retry_ok") is False else
+                            [(label + "（再試行で直る）", {**choice, "retry_ok": True}, seq + [(point, h.target)] + rest)])
+                if choice.get("retry_ok") is True:
+                    return
+                choice = {**choice, "retry_ok": False}
+                label += "（再試行しても直らない）"
+                seq = seq + [(point, h.target)] * h.times
+            elif h.kind == "case":
+                for o, sub in h.cases.items():
+                    outs = {**choice.get("outcomes", {}), h.target: o}
+                    yield from walk([*sub, *hs[i + 1:]], seq + [("call", h.target)],
+                                    {**choice, "outcomes": outs}, label + f"（{h.target}：{o}）")
+                return
+        yield label, choice, seq
+
+    return list(walk(hs, [], {}, ""))
 
 
 def verify_operation(spec: Spec, op: Operation, fn: Callable) -> OpResult:
@@ -325,6 +400,13 @@ def _run(spec: Spec, op: Operation, fn: Callable, sc: Scenario, used: dict):
     fail_at = next((i for i, t in enumerate(trace) if t == (point, effect)), None)
     idx = next((i for i, s in enumerate(op.steps) if (s.kind, s.target) == (point, effect)), None)
     if fail_at is None or idx is None:
+        return None
+    if sc.expect is not None:
+        after = trace[fail_at + 1:]
+        if after != sc.expect:
+            i = next((i for i, (a, b) in enumerate(zip(sc.expect, after)) if a != b), min(len(sc.expect), len(after)))
+            return (f"{key} のあと、仕様の手順どおり {_labels(sc.expect)}",
+                    f"{_labels(after)}（{i + 1}つめから違う）")
         return None
     retried = any(t == (point, effect) for t in trace[fail_at + 1:])
     if not retried:

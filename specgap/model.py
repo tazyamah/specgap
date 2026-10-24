@@ -129,14 +129,42 @@ class Step:
 
 
 STEP_KINDS = ("confirm", "call", "send", "await", "update")
+# 失敗の扱いの手順で使える種類。retry は失敗した作用をもう一度、case は照会の結果で分ける、resume は続きの手順へ進む
+HANDLE_KINDS = (*STEP_KINDS, "retry", "case", "resume")
+
+
+@dataclass
+class Handle:
+    """失敗の扱いの手順1つ。"""
+    kind: str
+    target: str = ""  # 外部作用の名前か説明文。resume は空
+    times: int = 1  # retry の回数
+    cases: dict[str, list["Handle"]] = field(default_factory=dict)  # case：照会の結果 → 手順
+
+
+def describe_handles(hs: list[Handle]) -> str:
+    """手順を人が読む一文にする（文章の扱いが書かれていないとき用）。"""
+    names = {"confirm": "確認", "call": "呼ぶ", "send": "送る", "await": "待つ", "update": "更新"}
+    out = []
+    for h in hs:
+        if h.kind in names:
+            out.append(f"{names[h.kind]}「{h.target}」")
+        elif h.kind == "retry":
+            out.append(f"{h.target} を{h.times}回まで再試行")
+        elif h.kind == "resume":
+            out.append("続きの手順へ進む")
+        else:
+            out.append(f"{h.target} の結果で分ける（" + "／".join(f"{k}：{describe_handles(v)}" for k, v in h.cases.items()) + "）")
+    return " → ".join(out) or "何もしない"
 
 
 @dataclass
 class Operation:
     id: str
     uses: list[str]
-    on_failure: dict[str, str]  # "効果名.失敗名" → 扱い
+    on_failure: dict[str, str]  # "効果名.失敗名" → 扱い（人の言葉）
     steps: list[Step] = field(default_factory=list)
+    handlers: dict[str, list[Handle]] = field(default_factory=dict)  # 扱いを手順でも書いたもの
     on_interrupt: str = ""  # 途中で止まったときの扱い
 
 
@@ -158,6 +186,7 @@ class EffectInfo:
     reversible: str = ""  # yes / no / compensate
     compensate: str = ""  # reversible が compensate のときの取り消し用の外部作用
     idempotency: str = ""  # 二重実行を防ぐキー
+    outcomes: list[str] = field(default_factory=list)  # 照会などの結果の種類（実装には「結果」として返る）
 
 
 @dataclass
@@ -226,6 +255,40 @@ class Spec:
     data_allow: dict[str, list[str]] = field(default_factory=dict)  # システム → 渡してよい区分
     implementation: Implementation | None = None
     policy: dict[str, str] = field(default_factory=dict)  # 項目（または default）→ 必要な保証
+
+
+def _handles(items, where: str) -> list[Handle]:
+    if not isinstance(items, list):
+        raise SpecError(f"{where}の do は手順の並びで書いてください")
+    out = []
+    for i, h in enumerate(items, start=1):
+        if h == "resume":
+            out.append(Handle("resume"))
+            continue
+        if not isinstance(h, dict) or not h:
+            raise SpecError(f"{where}の手順 {i} は「種類: 対象」で書いてください")
+        kind = next(iter(h))
+        if kind not in HANDLE_KINDS:
+            raise SpecError(f"{where}の手順 {i} の種類 {kind} は使えません（{' / '.join(HANDLE_KINDS)}）")
+        if kind == "case":
+            cases = {str(k): _handles(v or [], where) for k, v in h.items() if k != "case"}
+            out.append(Handle("case", str(h["case"]), cases=cases))
+        elif kind == "retry":
+            out.append(Handle("retry", str(h["retry"]), times=int(h.get("times", 1))))
+        elif kind == "resume":
+            out.append(Handle("resume"))
+        else:
+            if len(h) != 1:
+                raise SpecError(f"{where}の手順 {i} は「種類: 対象」の1組で書いてください")
+            out.append(Handle(kind, str(h[kind])))
+    return out
+
+
+def _flat(hs: list[Handle]):
+    for h in hs:
+        yield h
+        for sub in h.cases.values():
+            yield from _flat(sub)
 
 
 def load(path: str | Path) -> Spec:
@@ -306,6 +369,7 @@ def parse(data: Any, base_dir: str | Path = ".") -> Spec:
             reversible=_yes_no(e.get("reversible", "")),
             compensate=str(e.get("compensate", "")),
             idempotency=str(e.get("idempotency", "")),
+            outcomes=[str(x) for x in e.get("outcomes") or []],
         )
 
     for o in data.get("operations") or []:
@@ -318,15 +382,24 @@ def parse(data: Any, base_dir: str | Path = ".") -> Spec:
                 raise SpecError(f"操作 {o['id']} の手順 {i} の種類 {kind} は使えません（{' / '.join(STEP_KINDS)}）")
             steps.append(Step(str(kind), str(target)))
         uses = [str(u) for u in o.get("uses") or []]
-        for st in steps:
-            if st.kind in ("call", "send", "await") and st.target not in uses:
+        on_failure, handlers = {}, {}
+        for k, v in (o.get("on_failure") or {}).items():
+            if isinstance(v, dict):
+                hs = _handles(v.get("do") or [], f"操作 {o['id']} の失敗 {k} の扱い")
+                handlers[str(k)] = hs
+                on_failure[str(k)] = str(v.get("text") or describe_handles(hs))
+            else:
+                on_failure[str(k)] = str(v)
+        for st in [*steps, *[h for hs in handlers.values() for h in _flat(hs)]]:
+            if st.kind in ("call", "send", "await", "case") and st.target not in uses:
                 uses.append(st.target)
         spec.operations.append(
             Operation(
                 id=str(o["id"]),
                 uses=uses,
-                on_failure={str(k): str(v) for k, v in (o.get("on_failure") or {}).items()},
+                on_failure=on_failure,
                 steps=steps,
+                handlers=handlers,
                 on_interrupt=str(o.get("on_interrupt", "")),
             )
         )

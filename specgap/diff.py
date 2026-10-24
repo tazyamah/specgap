@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .examples import Examples
-from .model import Spec
+from .model import Spec, describe_handles
 
 ADDED, REMOVED, CHANGED = "追加", "削除", "変更"
 
@@ -79,7 +79,8 @@ def diff(base: Spec, head: Spec) -> SpecDiff:
     keyed("状態", arrows_machine(base), arrows_machine(head), lambda k, v: k)
 
     def handlers(spec):
-        return {f"{o.id}：{k}": v for o in spec.operations for k, v in o.on_failure.items()}
+        return {f"{o.id}：{k}": v + (f"（手順：{describe_handles(o.handlers[k])}）" if k in o.handlers else "")
+                for o in spec.operations for k, v in o.on_failure.items()}
 
     keyed("失敗の扱い", handlers(base), handlers(head), lambda k, v: f"{k} は「{v}」")
 
@@ -93,6 +94,8 @@ def diff(base: Spec, head: Spec) -> SpecDiff:
             out[f"{n} の取り消し"] = {"yes": "できる", "no": "できない", "compensate": f"埋め合わせる（{e.compensate}）"}.get(e.reversible, "未定")
             out[f"{n} の二重実行を防ぐキー"] = e.idempotency
             out[f"{n} で渡すデータ"] = "・".join(e.sends)
+            if e.outcomes:
+                out[f"{n} の結果の種類"] = "・".join(e.outcomes)
         return out
 
     keyed("連携", {f"システム {k}": v.kind for k, v in base.systems.items()},
