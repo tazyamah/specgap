@@ -610,6 +610,24 @@ class _Checker:
                                 ref=name,
                                 slot={"type": "data_over", "effect": name, "item": item, "system": e.system, "class": cls})
 
+    def _when(self, op, i, when):
+        """条件つきの手順：「表.出力」の表と出力があり、出力が真偽で、表の入力を操作が持っているか。"""
+        spec = self.spec
+        tid, _, out = when.rpartition(".")
+        t = next((x for x in spec.tables if x.id == tid), None)
+        where = f"操作「{op.id}」の手順{i}の条件 {when}"
+        if t is None or out not in t.outputs:
+            self.report.add(ERROR, "手順", f"{where} が指す表または出力がありません（「表.出力」で書きます）")
+            return
+        var = spec.outputs.get(out)
+        if var is None or var.type != "bool":
+            self.report.add(ERROR, "手順", f"{where}：{out} は真偽（bool）の出力ではありません")
+        used = {n for r in t.rows for n in spec.inputs if n in r.when}
+        missing = sorted(n for n in used if n not in spec.data_items)
+        if missing:
+            self.report.add(WARNING, "手順", f"{where}：表の入力 {'・'.join(missing)} を、操作が手元のデータとして持っていません",
+                            question=f"{'・'.join(missing)} は、どこから受け取りますか")
+
     def _steps(self, op):
         spec = self.spec
         pending: list[str] = []
@@ -618,6 +636,8 @@ class _Checker:
         interrupt_reported = False  # 途中停止の問いは操作ごとに1回だけ出す
         for i, st in enumerate(op.steps, start=1):
             ref = f"{op.id}#{i}"
+            if st.when:
+                self._when(op, i, st.when)
             e = spec.effect_info.get(st.target) if st.kind in ("call", "send", "await") else None
             if st.kind in ("call", "send", "await") and e is None:
                 self.report.add(ERROR, "手順", f"操作「{op.id}」の手順{i}が未定義の外部作用 {st.target} を使っています", ref=ref)

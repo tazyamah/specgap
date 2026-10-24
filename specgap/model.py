@@ -126,6 +126,7 @@ class Machine:
 class Step:
     kind: str  # confirm / call / send / await / update
     target: str  # call・send・await は外部作用の名前、confirm・update は説明文
+    when: str | None = None  # 「表.出力」：その表がこの出力を True と決めたときだけ行う手順
 
 
 STEP_KINDS = ("confirm", "call", "send", "await", "update")
@@ -375,12 +376,13 @@ def parse(data: Any, base_dir: str | Path = ".") -> Spec:
     for o in data.get("operations") or []:
         steps = []
         for i, st in enumerate(o.get("steps") or [], start=1):
-            if not isinstance(st, dict) or len(st) != 1:
-                raise SpecError(f"操作 {o['id']} の手順 {i} は「種類: 対象」の1組で書いてください")
-            (kind, target), = st.items()
+            body = {k: v for k, v in st.items() if k != "when"} if isinstance(st, dict) else None
+            if not body or len(body) != 1:
+                raise SpecError(f"操作 {o['id']} の手順 {i} は「種類: 対象」の1組で書いてください（条件は when）")
+            (kind, target), = body.items()
             if kind not in STEP_KINDS:
                 raise SpecError(f"操作 {o['id']} の手順 {i} の種類 {kind} は使えません（{' / '.join(STEP_KINDS)}）")
-            steps.append(Step(str(kind), str(target)))
+            steps.append(Step(str(kind), str(target), str(st["when"]) if st.get("when") else None))
         uses = [str(u) for u in o.get("uses") or []]
         on_failure, handlers = {}, {}
         for k, v in (o.get("on_failure") or {}).items():
