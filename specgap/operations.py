@@ -383,8 +383,17 @@ def expand(spec: Spec, op: Operation, failed: str, hs: list[Handle]):
                 yield label, choice, seq + rest_for(choice)
                 return
             elif h.kind == "retry":
-                yield from ([] if choice.get("retry_ok") is False else
-                            [(label + "（再試行で直る）", {**choice, "retry_ok": True}, seq + [(point, h.target)] + rest_for(choice))])
+                if choice.get("retry_ok") is not False:
+                    # 再試行で直った作用の結果で後の手順が分かれるなら、結果ごとに分ける
+                    info = spec.effect_info.get(h.target)
+                    branch = info and info.outcomes and any(
+                        s.when and s.when.partition("=")[0] == h.target for s in after)
+                    for o in (info.outcomes if branch else [None]):
+                        c = {**choice, "retry_ok": True}
+                        if o:
+                            c["outcomes"] = {**choice.get("outcomes", {}), h.target: o}
+                        yield (label + "（再試行で直る）" + (f"（{h.target}：{o}）" if o else ""),
+                               c, seq + [(point, h.target)] + rest_for(c))
                 if choice.get("retry_ok") is True:
                     return
                 choice = {**choice, "retry_ok": False}
