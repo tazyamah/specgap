@@ -48,6 +48,17 @@ def render(spec: Spec, report: Report, *, base: Spec | None = None, change: Spec
 
     sections: list[tuple[str, str, str]] = []  # (アンカー, 見出し, 本文)
 
+    # ---- 完成の判定 ----
+    if report.guarantee is not None:
+        from .completion import unmet
+
+        rest = unmet(report)
+        chip = '<span class="chip ok">完成</span>' if not rest else '<span class="chip ask">未完成</span>'
+        body = ("<p class=\"lead\">拒否と確認が 0 件で、表・状態機械・性質・操作とユースケースがすべてテスト済み以上です。"
+                "画面そのものの実装と、途中で止まったときの担当者の作業手順は範囲外です。</p>" if not rest else
+                "<ul>" + "".join(f"<li>{escape(r)}</li>" for r in rest) + "</ul>")
+        sections.append(("done", "完成の判定", f"<p>{chip}</p>{body}"))
+
     # ---- 答えてほしいこと ----
     if errors or warns:
         cards = []

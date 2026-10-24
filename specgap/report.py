@@ -20,6 +20,10 @@ def to_markdown(report: Report) -> str:
     verdict = "受け入れ可" if report.ok else "拒否"
     lines.append(f"判定：**{verdict}**（拒否 {counts[ERROR]} 件・確認 {counts[WARNING]} 件・記録 {counts[INFO]} 件）")
     lines.append("")
+    if report.guarantee is not None:
+        from .completion import summary
+
+        lines += [f"完成の判定：{summary(report)}", ""]
     for severity, heading in _SECTIONS:
         items = [f for f in report.findings if f.severity == severity]
         if not items:
