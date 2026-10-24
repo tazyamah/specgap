@@ -437,6 +437,38 @@ class _Checker:
                     self.report.add(
                         WARNING, "失敗", f"操作「{op.id}」の失敗の扱い {key} は、起こり得ない失敗に対するものです",
                     )
+            for key, hs in op.handlers.items():
+                self._handles(op, key, key.split(".")[0], hs)
+
+    def _handles(self, op, key, failed, hs):
+        """手順で書いた失敗の扱いを確かめる。"""
+        where = f"操作「{op.id}」の {key} の扱い"
+        for i, h in enumerate(hs):
+            if h.kind == "retry" and h.target != failed:
+                self.report.add(ERROR, "失敗", f"{where}で再試行する {h.target} は、失敗した {failed} ではありません",
+                                question=f"{key} のとき、もう一度行うのは {failed} ですか")
+            if h.kind == "retry" and i == len(hs) - 1:
+                self.report.add(WARNING, "失敗", f"{where}：{h.target} を{h.times}回再試行しても直らないときの扱いがありません",
+                                detail="今のままでは、直らなければそこで止まり、後の手順には進みません。",
+                                question=f"{h.target} を{h.times}回再試行しても直らなければ、どうしますか")
+            if h.kind == "resume" and i != len(hs) - 1:
+                self.report.add(ERROR, "失敗", f"{where}で、続きの手順へ進んだあとに手順が書かれています")
+            if h.kind == "case":
+                info = self.spec.effect_info.get(h.target)
+                outcomes = info.outcomes if info else []
+                if not outcomes:
+                    self.report.add(ERROR, "失敗", f"{where}で {h.target} の結果で分けていますが、{h.target} の結果の種類が決まっていません",
+                                    question=f"{h.target} の結果には、どんな種類がありますか")
+                for o in outcomes:
+                    if o not in h.cases:
+                        self.report.add(ERROR, "失敗", f"{where}で、{h.target} の結果が「{o}」のときの手順がありません",
+                                        question=f"{key} のあと {h.target} の結果が「{o}」なら、どうしますか")
+                for o in h.cases:
+                    if outcomes and o not in outcomes:
+                        self.report.add(ERROR, "失敗", f"{where}の「{o}」は、{h.target} の結果の種類にありません")
+                for sub in h.cases.values():
+                    self._handles(op, key, failed, [*sub, *hs[i + 1:]] if not (sub and sub[-1].kind == "resume") else sub)
+                return
 
     # ---- ユースケースと画面 ----
 

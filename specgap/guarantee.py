@@ -355,6 +355,11 @@ class _Verifier:
         # 筋書きはすべて動かすが、データの値や2回目の失敗までは尽くしていないので証明とは呼ばない
         item.level = TESTED
         item.basis = f"{r.scenarios} 通りの筋書きをすべて確認（正常・確認を断る・失敗の種類ごと・各手順の直後で停止）"
+        text_only = [k for k in op.on_failure if k not in op.handlers]
+        if op.handlers:
+            item.basis += f"。失敗の扱いのうち {len(op.handlers)} 件は、手順どおりに動くかまで確認"
+        if text_only:
+            item.basis += f"。文章だけの扱い {len(text_only)} 件は、扱った記録があるかだけを確認"
         return item
 
     # ---- 表 ----
