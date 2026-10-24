@@ -7,6 +7,8 @@
   python -m specgap ask <仕様> [-o <作業中の版>]            次の1問を、会話で聞くための包みにして出す
   python -m specgap reply <仕様> [-o <作業中の版>] <問い> <答え> [--said <人の言葉>]
                                                            答えを1つ反映して検査し直し、次の1問を出す
+  python -m specgap change <仕様> [-o <作業中の版>] <変更案> --title <決めたこと> [--said <人の言葉>] [--question <問い>]
+                                                           選択肢に収まらない答えを、正本の変更として当てる
   python -m specgap decisions <仕様> -o <フォルダ>          判断（問いへの答え）を ADR 形式の Markdown に書き出す
   python -m specgap mcp                                    AI から ask・reply を使う MCP サーバー
   python -m specgap <仕様>                                 check と同じ
@@ -31,7 +33,7 @@ from .view import render
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] not in ("check", "view", "questions", "answer", "ask", "reply", "decisions", "mcp", "-h", "--help"):
+    if argv and argv[0] not in ("check", "view", "questions", "answer", "ask", "reply", "change", "decisions", "mcp", "-h", "--help"):
         argv.insert(0, "check")
     parser = argparse.ArgumentParser(prog="specgap", description="仕様の漏れを検査し、人向けのレビュー画面を作ります")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -60,6 +62,14 @@ def main(argv: list[str] | None = None) -> int:
             k.add_argument("question", help="問いの識別子（Q で始まる）")
             k.add_argument("answer", help="答え（値・式・選択肢。{出力名: 値} の形も可）")
             k.add_argument("--said", default="", help="人が会話で言った言葉（記録に残す）")
+    ch = sub.add_parser("change", help="選択肢に収まらない答えを、正本の変更として当てる")
+    ch.add_argument("spec", help="元の仕様ファイル（書き換えない）")
+    ch.add_argument("-o", "--work", help="作業中の版（省略時は <仕様>.work.yaml）")
+    ch.add_argument("ops", help="変更案のファイル（操作の並び。YAML か JSON）")
+    ch.add_argument("--title", required=True, help="何を決めたかを一文で")
+    ch.add_argument("--said", default="", help="人が会話で言った言葉")
+    ch.add_argument("--question", default="", help="答えている問いの識別子（Q で始まる）")
+    ch.add_argument("--assume", action="append", default=[], help="前提（何度でも）")
     dc = sub.add_parser("decisions", help="判断を ADR 形式の Markdown に書き出す")
     dc.add_argument("spec", help="仕様ファイル（YAML）")
     dc.add_argument("-o", "--output", required=True, help="書き出すフォルダ")
@@ -69,6 +79,14 @@ def main(argv: list[str] | None = None) -> int:
         return _answering(args)
     if args.cmd in ("ask", "reply"):
         return _asking(args)
+    if args.cmd == "change":
+        from ruamel.yaml import YAML
+
+        from .change import change
+        ops = YAML(typ="safe").load(Path(args.ops).read_text(encoding="utf-8"))
+        res = change(asking.session(args.spec, args.work), ops, args.title, args.said, args.question, args.assume)
+        print(res.text)
+        return 0 if res.ok else 1
     if args.cmd == "decisions":
         from .decisions import export
         try:

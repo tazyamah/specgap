@@ -22,7 +22,7 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
-from .answer import REJECT_WORD, Question, _place, apply, questions
+from .answer import ACCEPT_WORD, REJECT_WORD, Question, _place, apply, questions
 from . import rules as rulebook
 from .checks import ERROR, Report, check
 from .expr import Env
@@ -81,7 +81,8 @@ def next_packet(session: Session) -> tuple[Packet | None, Report]:
 
 def packet(spec: Spec, q: Question, remaining: int) -> Packet:
     return Packet(question_id(q), remaining, q.title, q.question, q.example,
-                  choices(spec, q.slot), q.how, q.effect, context(spec, q.slot))
+                  choices(spec, q.slot) + ([ACCEPT_WORD] if q.severity == "warning" else []),
+                  q.how, q.effect, context(spec, q.slot))
 
 
 def choices(spec: Spec, slot: dict) -> list[str]:

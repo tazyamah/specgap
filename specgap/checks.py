@@ -54,7 +54,20 @@ def check(spec: Spec) -> Report:
     env = Env(spec)
     checker = _Checker(spec, env, report)
     checker.run()
+    _accepted(spec, report)
     return report
+
+
+def _accepted(spec: Spec, report: Report) -> None:
+    """判断で「このままでよい」と確かめた確認の項目は、記録に回す。"""
+    from .decisions import current
+
+    by = {r[len("確認:"):]: d for d in current(spec) for r in d.applies_to if r.startswith("確認:")}
+    for f in report.findings:
+        d = by.get(f.title)
+        if d is not None and f.severity == WARNING:
+            f.severity = INFO
+            f.detail = f"判断 {d.id} で、このままでよいと確認済み。" + (f" {f.detail}" if f.detail else "")
 
 
 class _Checker:

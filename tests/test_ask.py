@@ -29,6 +29,8 @@ def cells(tmp_path):
 def first(packet):
     """どの種類の問いにも、とりあえず通る答えを返す。"""
     t = packet_slot(packet)["type"]
+    if t == "open":
+        return "このままでよい"
     if t == "rule_trend":
         return packet_slot(packet)["fits"][0].replace("減る", "減る（か同じ）") if packet_slot(packet)["fits"] else "場合による"
     if t == "rule_relate":
@@ -61,7 +63,7 @@ def keep_slot(monkeypatch):
 
 def test_包みには1問に必要なものがそろう(cells):
     p, _ = ask.next_packet(ask.session(cells))
-    assert p.id.startswith("Q") and p.remaining == 16
+    assert p.id.startswith("Q") and p.remaining == 18  # 機械的に直せる 16 問と、正本の形を変える答えが要る確認 2 問
     assert p.question == "経過日数=30、商品状態=開封済み のとき、どうしますか"
     assert p.context[0] == "表「返金額の決定」（今ある行）"
     assert "答えると加わる行の条件：経過日数 == 30 and 商品状態 == 開封済み" in p.context
@@ -93,7 +95,7 @@ def test_答えるたびに作業中の版が変わり元の仕様は変わら�
     row = json.loads(s.log.read_text(encoding="utf-8").splitlines()[0])
     assert (row["id"], row["answer"], row["said"], row["from"]) == (p.id, {"返金額": "支払額 // 2"}, "半額で", "shop_v1.yaml")
     q, _ = ask.next_packet(s)
-    assert q.id != p.id and q.remaining == 15
+    assert q.id != p.id and q.remaining == 17
 
 
 def test_もう無い問いや読めない答えは反映しない(cells):
@@ -189,14 +191,14 @@ def test_ルールに反する行は拒否する(tmp_path):
     assert "表「表」がルール「開封済みは半分」に反しています" in errs
 
 
-def test_mcp_の道具は2つ():
+def test_mcp_の道具は3つ():
     pytest.importorskip("mcp")
     import asyncio
 
     from specgap.mcp_server import build
 
     tools = asyncio.run(build().list_tools())
-    assert sorted(t.name for t in tools) == ["answer_question", "next_question"]
+    assert sorted(t.name for t in tools) == ["answer_question", "change_spec", "next_question"]
 
 
 def test_数の穴にはほかの行の値が候補として付く(cells):

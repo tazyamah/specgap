@@ -25,8 +25,10 @@ def exists(spec: Spec, ref: str) -> bool:
             x.src == parts[1] and x.event == parts[2] for x in [*m.transitions, *m.rejects])
     if kind == "操作":
         op = next((x for x in spec.operations if x.id == parts[0]), None)
-        if op is None or len(parts) < 2:
+        if op is None:
             return False
+        if len(parts) == 1:
+            return True
         if parts[1] == "失敗":
             return ":".join(parts[2:]) in op.on_failure
         if parts[1] == "途中停止":
@@ -34,6 +36,10 @@ def exists(spec: Spec, ref: str) -> bool:
         if parts[1] == "手順" and len(parts) >= 4:
             return any(st.kind == parts[2] and st.target == ":".join(parts[3:]) for st in op.steps)
         return False
+    if kind == "正本":
+        return True  # 道筋で書いた参照は、ここでは確かめない
+    if kind == "確認":
+        return True  # 確認の項目は検査の結果なので、ここでは確かめない
     if kind == "データ":
         return rest in spec.data_items
     if kind == "外部作用":

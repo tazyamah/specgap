@@ -39,6 +39,7 @@ from .expr import Env, compile_expr
 from .model import SAME, TRENDS, UNDECIDED, UNSPECIFIED, Spec, SpecError
 
 REJECT_WORD = "拒否"
+ACCEPT_WORD = "このままでよい"  # 確認の問いに、今の正本のままでよいと答える言葉
 
 
 @dataclass
@@ -50,6 +51,7 @@ class Question:
     slot: dict
     how: str  # 答え方
     effect: str  # 答えると正本のどこが変わるか
+    severity: str = "error"
 
 
 @dataclass
@@ -64,15 +66,19 @@ def questions(report: Report) -> list[Question]:
     """答えると正本を機械的に直せる問いに番号を付けて並べる（同じ場所への問いは1つにまとめる）。"""
     out: list[Question] = []
     seen = set()
-    for f in report.findings:
-        if not f.slot:
-            continue
-        key = json.dumps(_place(f.slot), ensure_ascii=False, sort_keys=True)
+    # 機械的に直せる問いを先に、正本の形を変える答えが要る問い（open）を後に並べる
+    found = [(f, f.slot) for f in report.findings if f.slot and f.severity != "info"]
+    found += [(f, {"type": "open", "title": f.title}) for f in report.findings
+              if not f.slot and f.question and f.severity != "info"]
+    for f, slot in found:
+        key = json.dumps(_place(slot), ensure_ascii=False, sort_keys=True)
         if key in seen:
             continue
         seen.add(key)
-        how, effect = describe(f.slot)
-        out.append(Question(len(out) + 1, f.title, f.question, f.example, f.slot, how, effect))
+        how, effect = describe(slot)
+        if f.severity == "warning":
+            how += f"。今のままでよければ「{ACCEPT_WORD}」"
+        out.append(Question(len(out) + 1, f.title, f.question, f.example, slot, how, effect, f.severity))
     return out
 
 
@@ -121,6 +127,9 @@ def describe(slot: dict) -> tuple[str, str]:
     if t == "rule_boundary":
         return ("どちらと同じ扱いか（どちらでもないなら「どちらでもない」）",
                 f"ルール「{slot['by']}の境目の扱い」が正本に加わり、表のすべての列にまとめて使われます")
+    if t == "open":
+        return ("正本の形を変える答え（AI が変更案を change で出す）",
+                "答えに合わせて正本が変わり、変更は判断として残ります")
     if t == "derive":
         return ("「正しい」か「セルごとに答える」",
                 f"正しいなら表「{slot['table']}」に、ルールから決めた {len(slot['rows'])} 行が加わります")
@@ -156,7 +165,14 @@ def apply(spec_path: str | Path, spec: Spec, report: Report, answers: dict[int, 
             res.errors.append(f"問い {no} はありません")
             continue
         try:
-            msg = _apply_one(doc, spec, env, q.slot, ans)
+            if str(ans).strip() == ACCEPT_WORD:
+                if q.severity != "warning":
+                    raise SpecError(f"拒否の問いは「{ACCEPT_WORD}」にできません")
+                msg = f"「{q.title}」は今のままでよい"
+            elif q.slot["type"] == "open":
+                raise SpecError("この問いには正本の形を変える答えが要ります。変更案を change で出してください")
+            else:
+                msg = _apply_one(doc, spec, env, q.slot, ans)
         except SpecError as e:
             res.errors.append(f"問い {no}：{e}")
             continue
@@ -171,23 +187,33 @@ def apply(spec_path: str | Path, spec: Spec, report: Report, answers: dict[int, 
 
 def _decide(doc, q: Question, ans, msg: str, said: str, at: str) -> str:
     """反映した答えを判断として正本に加え、その id を返す。"""
+    title = msg[len("ルール「"):-1] if msg.startswith("ルール「") and msg.endswith("」") else msg
+    return _decide_record(doc, title=title, question=q.question,
+                          answer=ans if isinstance(ans, str) else json.dumps(ans, ensure_ascii=False),
+                          said=said, applies_to=_refs(doc, q.slot, msg, q.title), at=at)
+
+
+def _decide_record(doc, *, title: str, question: str, answer: str, said: str, applies_to: list[str],
+                   at: str, assumptions: list[str] | None = None) -> str:
     if doc.get("decisions") is None:
         doc["decisions"] = []
     nums = [int(m.group(1)) for d in doc["decisions"] if (m := re.fullmatch(r"D(\d+)", str(d.get("id", ""))))]
     did = f"D{max(nums, default=0) + 1}"
-    title = msg[len("ルール「"):-1] if msg.startswith("ルール「") and msg.endswith("」") else msg
-    d = CommentedMap({"id": did, "at": at, "title": title, "question": q.question,
-                      "answer": ans if isinstance(ans, str) else json.dumps(ans, ensure_ascii=False)})
+    d = CommentedMap({"id": did, "at": at, "title": title, "question": question, "answer": answer})
     if said:
         d["said"] = said
-    d["applies_to"] = _refs(doc, q.slot, msg)
+    if assumptions:
+        d["assumptions"] = list(assumptions)
+    d["applies_to"] = applies_to
     doc["decisions"].append(d)
     return did
 
 
-def _refs(doc, slot: dict, msg: str) -> list[str]:
+def _refs(doc, slot: dict, msg: str, title: str = "") -> list[str]:
     """答えが正本のどこに効いたか。"""
     t = slot["type"]
+    if msg.endswith("は今のままでよい"):
+        return [f"確認:{title}"]
     if t == "gap":
         return [f"表:{slot['table']}:{slot['when']}"]
     if t == "overlap":
