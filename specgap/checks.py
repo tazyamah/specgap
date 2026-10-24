@@ -613,9 +613,20 @@ class _Checker:
     def _when(self, op, i, when):
         """条件つきの手順：「表.出力」の表と出力があり、出力が真偽で、表の入力を操作が持っているか。"""
         spec = self.spec
+        where = f"操作「{op.id}」の手順{i}の条件 {when}"
+        if "=" in when:  # 「作用=結果」：前の手順で呼んだ作用の結果で分ける
+            eff, _, want = when.partition("=")
+            info = spec.effect_info.get(eff)
+            if info is None or not info.outcomes:
+                self.report.add(ERROR, "手順", f"{where}：{eff} の結果の種類が決まっていません",
+                                question=f"{eff} の結果には、どんな種類がありますか")
+            elif want not in info.outcomes:
+                self.report.add(ERROR, "手順", f"{where}：「{want}」は {eff} の結果の種類（{'・'.join(info.outcomes)}）にありません")
+            if not any(s.kind == "call" and s.target == eff for s in op.steps[:i - 1]):
+                self.report.add(ERROR, "手順", f"{where}：{eff} を、この手順より前に呼んでいません")
+            return
         tid, _, out = when.rpartition(".")
         t = next((x for x in spec.tables if x.id == tid), None)
-        where = f"操作「{op.id}」の手順{i}の条件 {when}"
         if t is None or out not in t.outputs:
             self.report.add(ERROR, "手順", f"{where} が指す表または出力がありません（「表.出力」で書きます）")
             return
@@ -630,7 +641,7 @@ class _Checker:
 
     def _steps(self, op):
         spec = self.spec
-        pending: list[str] = []
+        pending: list[tuple[str, str | None]] = []  # (結果を待っていない作用, その手順の条件)
         confirmed = False
         external_done: list[str] = []
         interrupt_reported = False  # 途中停止の問いは操作ごとに1回だけ出す
@@ -649,17 +660,18 @@ class _Checker:
             elif st.kind == "send" and e.mode != "async":
                 self.report.add(ERROR, "手順", f"操作「{op.id}」の手順{i}：{st.target} は応答を待つ作用なので send ではなく call です", ref=ref)
             elif st.kind == "await":
-                if st.target not in pending:
+                hit = next((x for x in pending if x[0] == st.target), None)
+                if hit is None:
                     self.report.add(ERROR, "手順", f"操作「{op.id}」の手順{i}：送っていない {st.target} の結果を待っています", ref=ref)
                 else:
-                    pending.remove(st.target)
-            elif st.kind == "update" and pending:
+                    pending.remove(hit)
+            elif st.kind == "update" and (waiting := [n for n, w in pending if not _exclusive(w, st.when)]):
                 self.report.add(
-                    ERROR, "手順", f"操作「{op.id}」の手順{i}で、{'・'.join(pending)} の結果を待たずに状態を進めています",
+                    ERROR, "手順", f"操作「{op.id}」の手順{i}で、{'・'.join(waiting)} の結果を待たずに状態を進めています",
                     detail=f"手順{i}：{st.target}",
-                    question=f"{'・'.join(pending)} が失敗しても「{st.target}」のままでよいですか。結果を待ちますか",
+                    question=f"{'・'.join(waiting)} が失敗しても「{st.target}」のままでよいですか。結果を待ちますか",
                     ref=ref,
-                    slot={"type": "await", "operation": op.id, "effects": list(pending), "update": st.target},
+                    slot={"type": "await", "operation": op.id, "effects": waiting, "update": st.target},
                 )
             if st.kind in ("call", "send"):
                 if e.reversible in ("no", "compensate") and not confirmed:
@@ -669,7 +681,7 @@ class _Checker:
                         slot={"type": "confirm", "operation": op.id, "kind": st.kind, "effect": st.target},
                     )
                 if st.kind == "send":
-                    pending.append(st.target)
+                    pending.append((st.target, st.when))
                 if e.reversible in ("no", "compensate"):
                     external_done.append(st.target)
             if external_done and i < len(op.steps) and not op.on_interrupt and not interrupt_reported \
@@ -682,7 +694,7 @@ class _Checker:
                 )
                 interrupt_reported = True
         # 失敗の扱いがすべて書かれていれば、失敗に気づく手段はあるとみなす
-        pending = [p for p in pending
+        pending = [p for p, _ in pending
                    if not all(f"{p}.{f}" in op.on_failure for f in spec.effects.get(p, []))]
         if pending:
             self.report.add(
@@ -838,3 +850,11 @@ def _rule_question(slot: dict) -> str:
     sides = [f"{slot['below']} 以下" if slot["below"] is not None else None,
              f"{slot['above']} 以上" if slot["above"] is not None else None]
     return f"{slot['by']}が {span} のときは、{'と '.join(x for x in sides if x)}のどちらと同じ扱いですか"
+
+
+def _exclusive(a: str | None, b: str | None) -> bool:
+    """2つの手順の条件が、同時には成り立たないか（同じ作用の違う結果）。"""
+    if not a or not b or "=" not in a or "=" not in b:
+        return False
+    (ea, _, va), (eb, _, vb) = a.partition("="), b.partition("=")
+    return ea == eb and va != vb

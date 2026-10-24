@@ -16,6 +16,9 @@ def spec_with(do, outcomes=("返金済み", "未返金")):
     doc = _yaml().load((EXAMPLES / "shop_v1_interviewed.yaml").read_text(encoding="utf-8"))
     doc["effects"]["返金状況の照会"]["outcomes"] = list(outcomes)
     op = next(o for o in doc["operations"] if o["id"] == "返金を実行")
+    for k, v in op["on_failure"].items():  # ほかの扱いは文章だけに戻し、通信エラーだけを見る
+        if isinstance(v, dict):
+            op["on_failure"][k] = v["text"]
     op["on_failure"][NETWORK] = {"text": "照会して、返金済みなら進め、まだなら再試行する", "do": do}
     doc.pop("implementation", None)
     spec = parse(doc, EXAMPLES)
