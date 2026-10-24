@@ -449,7 +449,22 @@ def _guarantee(g) -> str:
         "操作（外部とのやりとり）は、模擬の外部の中で正常・確認を断る・失敗・途中停止の筋書きをすべて動かしています。"
         "違反は実際に動かして確かめた具体例を出しています。監視ありの項目は、本番でも呼ばれるたびに仕様と比べます。</p>"
         f'<div class="scroll"><table class="grid"><thead><tr>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
-        + _uses(g)
+        + _usecase_guarantees(g) + _uses(g)
+    )
+
+
+def _usecase_guarantees(g) -> str:
+    if not g.usecases:
+        return ""
+    rows = "".join(
+        f'<tr><td>{escape(u.id)}</td><td><span class="chip {_LEVEL_CLASS[u.level]}">{escape(u.level)}</span></td>'
+        f"<td>{escape(u.basis)}</td></tr>" for u in g.usecases)
+    return (
+        "<h3>ユースケースごとの保証</h3>"
+        '<p class="lead">ユースケースが使う表・状態機械・操作と、使う表の出力にかかる性質のうち、最も弱い保証です。'
+        "ユースケースの保証は、これより強くは言えません。</p>"
+        f'<div class="scroll"><table class="grid"><thead><tr><th>ユースケース</th><th>保証</th><th>根拠</th></tr></thead>'
+        f"<tbody>{rows}</tbody></table></div>"
     )
 
 

@@ -46,6 +46,7 @@ MAX_GRID = 2000
 SEED = 0
 
 REJECTED = "（拒否）"
+NOTHING_TO_VERIFY = "保証を確かめられる項目（表・状態機械・操作）を使っていません（画面だけのユースケース）"
 
 
 @dataclass
@@ -112,6 +113,7 @@ class Item:
 class Guarantee:
     module: str
     items: list[Item] = field(default_factory=list)
+    usecases: list[Item] = field(default_factory=list)  # ユースケースごとの保証（使う項目のうち最も弱いもの）
 
     def item(self, id_: str) -> Item | None:
         return next((i for i in self.items if i.id == id_), None)
@@ -141,6 +143,7 @@ def verify(spec: Spec, impl: str | Path | None = None, base: Spec | None = None)
         g = Guarantee(module=path.name, items=v.run())
     finally:
         decide._state = saved
+    g.usecases = usecase_guarantees(spec, g)
     if base is not None and base.implementation is not None:
         try:
             before = verify(base)
@@ -154,6 +157,29 @@ def verify(spec: Spec, impl: str | Path | None = None, base: Spec | None = None)
                     if b.kind == "操作" and b.level != VIOLATION:
                         it.before_uses = b.uses
     return g
+
+
+def usecase_guarantees(spec: Spec, g: Guarantee) -> list[Item]:
+    """ユースケースの保証を、使う表・状態機械・操作と、使う表の出力にかかる性質のうち、最も弱いものにする。"""
+    import re
+
+    out = []
+    for u in spec.usecases:
+        parts = [it for name in u.uses if (it := g.item(name)) is not None and it.kind != "性質"]
+        outputs = {o for t in spec.tables if t.id in u.uses for r in t.rows for o in r.then}
+        for e in spec.ensures:
+            if outputs & set(re.findall(r"[^\s()<>=!+\-*/%,]+", e.expr)):
+                parts.append(g.item(e.id))
+        parts = [p for p in parts if p is not None]
+        if not parts:
+            out.append(Item("ユースケース", u.id, level=NONE, basis=NOTHING_TO_VERIFY))
+            continue
+        weakest = min(parts, key=lambda p: (LEVELS.index(p.level) if p.function else LEVELS.index(NONE), p.monitored))
+        level = weakest.level if weakest.function else NONE
+        basis = "・".join(f"{p.kind}「{p.id}」{p.level if p.function else NONE}" for p in parts)
+        out.append(Item("ユースケース", u.id, function="、".join(p.function for p in parts if p.function),
+                        level=level, basis=f"最も弱いのは{weakest.kind}「{weakest.id}」。使う項目：{basis}"))
+    return out
 
 
 def apply(report: Report, g: Guarantee) -> None:
@@ -179,6 +205,10 @@ def apply(report: Report, g: Guarantee) -> None:
         if it.before_rank is not None and it.level != VIOLATION and _rank(it) < it.before_rank:
             report.add(WARNING, "実装", f"{name}の保証が前の版より下がりました（{it.before} → {it.label}）",
                        detail="方針の範囲内でも、下がったことは人が確かめます。", ref=it.id)
+    for u in g.usecases:
+        if u.level in (VIOLATION, NONE) and u.basis != NOTHING_TO_VERIFY:
+            report.add(WARNING, "実装", f"ユースケース「{u.id}」は保証がありません（{u.level}）", detail=u.basis,
+                       question="使う項目の実装を書くか、確かめ方を足しますか", ref=f"ユースケース:{u.id}")
     if not any(f.check == "実装" and f.severity in (ERROR, WARNING) for f in report.findings):
         report.passed.append("実装と仕様の一致")
 
