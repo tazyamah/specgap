@@ -75,3 +75,11 @@ def test_入口は図と差分に出る(shop):
     html = render(head, check(head), base=base)
     assert "✉ 不正な注文の通知" in html and "最初の画面を通らずに 不正な注文の詳細 を開きます" in html
     assert any(c.area == "画面" and "不正な注文の通知 のリンク" in c.text for c in diff(base, head).changes)
+
+
+def test_最初の画面を変えると差分に出て_判断は画面の流れを指す(shop):
+    res = change(shop, [{"op": "replace", "path": "screens/購入者の画面/start", "value": "商品一覧"}], "商品一覧から始まる")
+    assert res.ok, res.text
+    assert any("購入者の画面：最初の画面は 商品一覧" in c for c in res.changes)
+    spec = load(shop.work)
+    assert spec.decisions[-1].applies_to == ["画面:購入者の画面"] and exists(spec, "画面:購入者の画面")

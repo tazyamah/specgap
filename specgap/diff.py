@@ -65,6 +65,8 @@ def diff(base: Spec, head: Spec) -> SpecDiff:
     # 画面と状態遷移は、矢印1本ずつを比べる
     def arrows_screens(spec):
         a = {f"{f.id}：{s.src} →「{s.action}」→ {s.dst}": "" for f in spec.screen_flows for s in f.steps}
+        a.update({f"{f.id}：最初の画面は {f.start}": "" for f in spec.screen_flows})
+        a.update({f"{f.id}：{n} で終わる": "" for f in spec.screen_flows for n in f.final})
         a.update({f"{f.id}：{e.via} のリンク{f'（{e.link}）' if e.link else ''} → {e.dst}": "" for f in spec.screen_flows for e in f.entries})
         return a
 

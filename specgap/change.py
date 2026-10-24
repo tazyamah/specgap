@@ -144,6 +144,8 @@ def refs(op: dict) -> list[str]:
         return [f"画面:{segs[1]}:{v.get('from')}:{v.get('action')}"]
     if segs[:1] == ["screens"] and len(segs) == 3 and segs[2] == "entries" and isinstance(v, dict):
         return [f"画面:{segs[1]}:入口:{v.get('via')}"]
+    if segs[:1] == ["screens"] and len(segs) == 3 and segs[2] in ("start", "final"):
+        return [f"画面:{segs[1]}"]
     if segs == ["screens"] and isinstance(v, dict):
         return [f"画面:{v.get('id')}"]
     if segs == ["usecases"] and isinstance(v, dict):
