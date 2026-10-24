@@ -46,6 +46,12 @@ def to_markdown(report: Report) -> str:
                 f"| {basis} | {it.required}{'' if it.meets else ' ✗'} |"
             )
         lines.append("")
+        if g.usecases:
+            lines += ["### ユースケースごとの保証", "",
+                      "使う表・状態機械・操作と、使う表にかかる性質のうち、最も弱い保証です。", "",
+                      "| ユースケース | 保証 | 根拠 |", "| --- | --- | --- |"]
+            lines += [f"| {u.id} | {u.level} | {u.basis} |" for u in g.usecases]
+            lines.append("")
         ops = [it for it in g.items if it.kind == "操作" and it.uses]
         if ops:
             lines += ["### 操作の実装が使う外部作用（実行して確かめた権限）", "",
