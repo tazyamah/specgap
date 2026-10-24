@@ -17,6 +17,7 @@ next_order_state = decide.machine("注文")
 from specgap.operations import EffectFailure  # noqa: E402
 
 LOG = "通信エラーと照会の結果をログに残す"
+mail_rule = decide.table("メールで知らせるか")
 
 
 def execute_refund(ctx):
@@ -44,10 +45,28 @@ def execute_refund(ctx):
             try:
                 pay()  # 再試行は1回だけ（D40）
             except EffectFailure:
-                ctx.update("返金失敗として記録し、担当者に通知する")
+                ctx.update("返金失敗として記録する")
+                try:
+                    ctx.send("担当者への通知", 注文番号=d["注文番号"], 決済ID=d["決済ID"], 通知の件名=d["通知の件名"],
+                             通知の種類="返金失敗")
+                except EffectFailure as n:
+                    ctx.handled(n.key)
                 return
     ctx.update("注文を返金済みにする")
     try:
         ctx.send("返金完了メール", メールアドレス=d["メールアドレス"], 氏名=d["氏名"], 返金額=d["返金額"])
     except EffectFailure as f:
         ctx.handled(f.key)  # 送れなかったことを記録するだけ
+
+
+def notify_staff(ctx):
+    """担当者への知らせ。通知欄には必ず載せ、メールは統一ルールの表（判断）に任せる。"""
+    d = ctx.data
+    ctx.update("通知欄に載せる")
+    if not mail_rule(通知の種類=d["通知の種類"])["メールで送る"]:
+        return
+    try:
+        ctx.send("担当者へのメール", 注文番号=d["注文番号"], 通知の件名=d["通知の件名"])
+    except EffectFailure as f:
+        ctx.handled(f.key)
+        ctx.update("通知欄に未送信と出す")
