@@ -31,6 +31,9 @@ from .diff import diff
 from .model import SpecError, load
 
 OPS = ("add", "replace", "remove")
+# 正本で並び（リスト）になる鍵。まだ無い並びに add したら、1つめの要素として並びを作る
+LIST_KEYS = {"usecases", "screens", "transitions", "rejects", "entries", "final", "uses", "operations", "steps",
+             "rows", "rules", "decisions", "sends", "receives", "failures", "ensures", "tables", "machines"}
 
 
 @dataclass
@@ -86,7 +89,8 @@ def _apply_op(doc, op: dict) -> None:
         if "value" not in op:
             raise SpecError(f"add には value が要ります（{path}）")
         if isinstance(parent, dict) and last not in parent:
-            parent[last] = _styled(op["value"])
+            v = op["value"]
+            parent[last] = _styled([v] if last in LIST_KEYS and not isinstance(v, list) else v)
             return
         target = _walk(parent, last, path)
         if isinstance(target, list):
@@ -136,6 +140,14 @@ def refs(op: dict) -> list[str]:
         return [f"外部作用:{k}" for k in v]
     if segs[:1] == ["effects"] and len(segs) >= 2:
         return [f"外部作用:{segs[1]}"]
+    if segs[:1] == ["screens"] and len(segs) == 3 and segs[2] == "transitions" and isinstance(v, dict):
+        return [f"画面:{segs[1]}:{v.get('from')}:{v.get('action')}"]
+    if segs[:1] == ["screens"] and len(segs) == 3 and segs[2] == "entries" and isinstance(v, dict):
+        return [f"画面:{segs[1]}:入口:{v.get('via')}"]
+    if segs == ["screens"] and isinstance(v, dict):
+        return [f"画面:{v.get('id')}"]
+    if segs == ["usecases"] and isinstance(v, dict):
+        return [f"ユースケース:{v.get('id')}"]
     if segs == ["rules"] and isinstance(v, dict):
         return [f"ルール:{v.get('id')}"]
     if segs[:1] == ["tables"] and len(segs) == 3 and segs[2] == "rows" and isinstance(v, dict):

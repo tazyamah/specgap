@@ -31,7 +31,8 @@ class Edge:
 
 
 def flow(nodes: list[str], edges: list[Edge], start: str, finals: list[str] = (),
-         node_kinds: dict[str, str] | None = None, title: str = "") -> str:
+         node_kinds: dict[str, str] | None = None, title: str = "", outside: list[str] = ()) -> str:
+    """outside は流れの外のノード（通知メールなどの入口）。入る先の画面の1つ左の列に置く。"""
     node_kinds = node_kinds or {}
     # 同じ2点の矢印はラベルをまとめる（種類が違うものは分ける）
     merged: dict[tuple, Edge] = {}
@@ -51,11 +52,25 @@ def flow(nodes: list[str], edges: list[Edge], start: str, finals: list[str] = ()
             if e.src == cur and e.dst not in layer and e.kind != REMOVED:
                 layer[e.dst] = layer[cur] + 1
                 queue.append(e.dst)
+    # 入口から入る画面も、入口の右に並ぶよう層を決める
+    for o in outside:
+        for e in edges:
+            if e.src == o and e.dst not in layer:
+                layer[e.dst] = 1
+                queue.append(e.dst)
+    while queue:
+        cur = queue.pop(0)
+        for e in edges:
+            if e.src == cur and e.dst not in layer and e.kind != REMOVED:
+                layer[e.dst] = layer[cur] + 1
+                queue.append(e.dst)
     last = max(layer.values(), default=0)
     for n in nodes:
-        if n not in layer:
+        if n not in layer and n not in outside:
             last += 1
             layer[n] = last
+    for o in outside:
+        layer[o] = min([layer[e.dst] for e in edges if e.src == o] or [1]) - 1
     cols: dict[int, list[str]] = {}
     for n in nodes:
         cols.setdefault(layer[n], []).append(n)
@@ -117,7 +132,7 @@ def flow(nodes: list[str], edges: list[Edge], start: str, finals: list[str] = ()
     for n in nodes:
         cx, cy = pos[n]
         w = width[n]
-        classes = ["node", node_kinds.get(n, SAME)]
+        classes = ["node", node_kinds.get(n, SAME)] + (["outside"] if n in outside else [])
         if n == start:
             classes.append("start")
         if n in finals:

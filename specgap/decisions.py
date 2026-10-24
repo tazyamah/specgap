@@ -36,6 +36,17 @@ def exists(spec: Spec, ref: str) -> bool:
         if parts[1] == "手順" and len(parts) >= 4:
             return any(st.kind == parts[2] and st.target == ":".join(parts[3:]) for st in op.steps)
         return False
+    if kind == "画面":
+        f = next((x for x in spec.screen_flows if x.id == parts[0]), None)
+        if f is None:
+            return False
+        if len(parts) == 1:
+            return True
+        if parts[1] == "入口":
+            return any(e.via == ":".join(parts[2:]) for e in f.entries)
+        return len(parts) == 3 and any(st.src == parts[1] and st.action == parts[2] for st in f.steps)
+    if kind == "ユースケース":
+        return any(u.id == rest for u in spec.usecases)
     if kind == "正本":
         return True  # 道筋で書いた参照は、ここでは確かめない
     if kind == "確認":

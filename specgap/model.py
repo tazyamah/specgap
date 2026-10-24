@@ -177,12 +177,21 @@ class ScreenStep:
 
 
 @dataclass
+class ScreenEntry:
+    """最初の画面を通らずに入る入口。連携（通知メールなど）で渡したリンクから、画面を直接開く。"""
+    via: str  # リンクを渡す外部作用
+    dst: str  # 開く画面
+    link: str | None = None  # リンクにあたるデータ項目
+
+
+@dataclass
 class ScreenFlow:
     id: str
     start: str
     screens: list[str]
     final: list[str]
     steps: list[ScreenStep]
+    entries: list[ScreenEntry] = field(default_factory=list)
 
 
 @dataclass
@@ -340,13 +349,18 @@ def parse(data: Any, base_dir: str | Path = ".") -> Spec:
                        usecase=str(t["usecase"]) if t.get("usecase") else None)
             for t in f.get("transitions") or []
         ]
+        entries = []
+        for e in f.get("entries") or []:
+            if not isinstance(e, dict) or "via" not in e or "to" not in e:
+                raise SpecError(f"画面の流れ「{f['id']}」の入口には via（どの連携から）と to（どの画面へ）が必要です")
+            entries.append(ScreenEntry(via=str(e["via"]), dst=str(e["to"]), link=str(e["link"]) if e.get("link") else None))
         names = [str(f["start"])]
-        for n in [*(f.get("screens") or []), *[x for st in steps for x in (st.src, st.dst)]]:
+        for n in [*(f.get("screens") or []), *[x for st in steps for x in (st.src, st.dst)], *[e.dst for e in entries]]:
             if str(n) not in names:
                 names.append(str(n))
         spec.screen_flows.append(
             ScreenFlow(id=str(f["id"]), start=str(f["start"]), screens=names,
-                       final=[str(x) for x in f.get("final") or []], steps=steps)
+                       final=[str(x) for x in f.get("final") or []], steps=steps, entries=entries)
         )
 
     impl = data.get("implementation")
