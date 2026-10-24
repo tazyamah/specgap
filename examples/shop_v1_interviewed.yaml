@@ -29,7 +29,7 @@ usecases:
     uses: [重複した発送を記録する]
 screens:
   - id: 購入者の画面
-    start: 商品一覧
+    start: トップ
     transitions:
       - {from: 商品一覧, action: 購入する, to: 注文確認, usecase: 注文する}
       - {from: 注文確認, action: 確定する, to: 注文一覧}
@@ -618,3 +618,11 @@ decisions:
       - D35 で前提として残した入口（不正な注文と同じ形）を、正本の入口として書く
     applies_to:
       - 画面:サポート担当の画面:入口:重複した発送の通知
+  - id: D38
+    at: '2026-10-24'
+    title: 購入者の画面はトップから始まる
+    question: （問いによらない変更）
+    answer: 購入者の画面はトップから始まる
+    said: トップを始まりに。
+    applies_to:
+      - 画面:購入者の画面
