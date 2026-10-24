@@ -106,3 +106,43 @@ def notify_staff(ctx):
     except EffectFailure as f:
         ctx.handled(f.key)
         ctx.update("通知欄に未送信と出す")
+
+
+def accept_return(ctx):
+    """返品を受け付ける。倉庫が受け付けなければ記録して担当者に通知する（D50）。"""
+    if not ctx.confirm("購入者が返品の内容を確認する"):
+        return
+    ctx.update("注文を返品処理中にする")
+    _request_pickup(ctx)
+
+
+def requery_return(ctx):
+    """途中で止まった返品を、時間をおいて照会し直す。照会の再試行は1回だけ（D51）。"""
+    d = ctx.data
+    for attempt in range(2):
+        try:
+            got = ctx.call("集荷依頼の照会", 注文番号=d["注文番号"])
+            break
+        except EffectFailure as f:
+            ctx.handled(f.key)
+            if attempt == 1:
+                ctx.update("返品を保留にする")
+                _notify(ctx, "集荷依頼を照会できない")
+                return
+    if got["結果"] == "依頼済み":  # 二重に依頼しない
+        ctx.update("注文を返品待ちにする")
+    else:
+        _request_pickup(ctx)
+
+
+def _request_pickup(ctx):
+    d = ctx.data
+    try:
+        ctx.send("集荷依頼", 注文番号=d["注文番号"], 氏名=d["氏名"], 住所=d["住所"])
+        ctx.await_result("集荷依頼")
+    except EffectFailure as f:
+        ctx.handled(f.key)
+        ctx.update("集荷依頼が通らなかったと記録する")
+        _notify(ctx, "集荷依頼の受付拒否")
+        return
+    ctx.update("注文を返品待ちにする")
