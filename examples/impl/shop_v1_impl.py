@@ -92,7 +92,8 @@ def _finish(ctx):
 
 def _notify(ctx, kind):
     d = ctx.data
-    ctx.send("担当者への通知", 注文番号=d["注文番号"], 決済ID=d["決済ID"], 通知の件名=d["通知の件名"], 通知の種類=kind)
+    ctx.send("担当者への通知", 注文番号=d["注文番号"], 決済ID=d["決済ID"], 通知の件名=d["通知の件名"], 通知の種類=kind,
+              詳細画面のリンク=d["詳細画面のリンク"])
 
 
 def notify_staff(ctx):
@@ -102,7 +103,7 @@ def notify_staff(ctx):
     if not mail_rule(通知の種類=d["通知の種類"])["メールで送る"]:
         return
     try:
-        ctx.send("担当者へのメール", 注文番号=d["注文番号"], 通知の件名=d["通知の件名"])
+        ctx.send("担当者へのメール", 注文番号=d["注文番号"], 通知の件名=d["通知の件名"], 詳細画面のリンク=d["詳細画面のリンク"])
     except EffectFailure as f:
         ctx.handled(f.key)
         ctx.update("通知欄に未送信と出す")
@@ -146,3 +147,15 @@ def _request_pickup(ctx):
         _notify(ctx, "集荷依頼の受付拒否")
         return
     ctx.update("注文を返品待ちにする")
+
+
+def record_fraud(ctx):
+    """発送済みの注文に届いた支払を、不正な注文として記録して知らせる（D54）。"""
+    ctx.update("不正な注文を作り、届いた支払をその注文に登録する")
+    _notify(ctx, "不正な注文")
+
+
+def record_duplicate(ctx):
+    """重ねて届いた発送の知らせを記録して知らせる（D54）。メールは表で送らない。"""
+    ctx.update("注文の備考欄に、発送の知らせが重ねて届いたことを記載する")
+    _notify(ctx, "重複した発送")
