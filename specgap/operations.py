@@ -72,7 +72,8 @@ class Adapter:
     def confirm(self, text: str) -> bool:
         raise NotImplementedError
 
-    def effect(self, kind: str, effect: str, data: dict) -> dict:
+    def effect(self, kind: str, effect: str, data: dict, key: str | None = None) -> dict:
+        """key は二重実行を防ぐキーの値（相手に渡さない場合も、こちらで見分けに使う）。"""
         raise NotImplementedError
 
     def result(self, effect: str) -> dict:
@@ -118,14 +119,23 @@ class Context:
     def call(self, effect: str, **data) -> dict:
         self._allow(effect, data)
         self.trace.append(("call", effect))
-        got = self._adapter.effect("call", effect, data)
+        got = self._adapter.effect("call", effect, data, self._key(effect, data))
         self.data.update(got)
         return got
 
     def send(self, effect: str, **data) -> None:
         self._allow(effect, data)
         self.trace.append(("send", effect))
-        self._adapter.effect("send", effect, data)
+        self._adapter.effect("send", effect, data, self._key(effect, data))
+
+    def _key(self, effect: str, data: dict) -> str | None:
+        """二重実行を防ぐキーの値。渡すデータになければ手元のデータから取る（こちら側で見分ける）。"""
+        info = self._spec.effect_info.get(effect)
+        item = info.idempotency if info else ""
+        if not item:
+            return None
+        v = data.get(item, self.data.get(item))
+        return None if v is None else str(v)
 
     def await_result(self, effect: str) -> dict:
         self._allow(effect)
@@ -187,10 +197,9 @@ class World(Adapter):
         self._step()
         return ok
 
-    def effect(self, kind: str, effect: str, data: dict) -> dict:
+    def effect(self, kind: str, effect: str, data: dict, key: str | None = None) -> dict:
         info = self.spec.effect_info.get(effect)
-        key_item = info.idempotency if info else ""
-        key = (effect, str(data[key_item]) if key_item and key_item in data else None)
+        key = (effect, key)
         self.used[effect] = list(data)
         self._fail(effect, kind)
         if key[1] is None or key not in self.done:  # 同じキーの依頼は外部が1回分として扱う
@@ -252,25 +261,41 @@ class OpResult:
     used: dict[str, list[str]] = field(default_factory=dict)  # 実装が使った外部作用 → 渡したデータ
 
 
-def _conditions(spec: Spec, op: Operation) -> list[dict[str, str]]:
-    """条件つきの手順の表について、入力の組み合わせをすべて並べる（選択肢と真偽だけ。数は既定値）。"""
+def _conditions(spec: Spec, op: Operation) -> list[tuple[dict[str, str], dict[str, str]]]:
+    """条件つきの手順の分かれ方をすべて並べる。(表の入力, 作用の結果) の組。
+    表の入力は選択肢と真偽だけを尽くし、数は既定値にする。"""
     import itertools
-    names = []
+    names, effects = [], []
     for st in op.steps:
-        if st.when:
-            t = next((x for x in spec.tables if x.id == st.when.rpartition(".")[0]), None)
-            for n, var in spec.inputs.items():
-                if t and any(n in r.when for r in t.rows) and n not in names and \
-                        (var.type == "bool" or var.type in spec.enums):
-                    names.append(n)
+        if not st.when:
+            continue
+        if "=" in st.when:
+            eff = st.when.split("=")[0]
+            if eff not in effects and spec.effect_info.get(eff) and spec.effect_info[eff].outcomes:
+                effects.append(eff)
+            continue
+        t = next((x for x in spec.tables if x.id == st.when.rpartition(".")[0]), None)
+        for n, var in spec.inputs.items():
+            if t and any(n in r.when for r in t.rows) and n not in names and \
+                    (var.type == "bool" or var.type in spec.enums):
+                names.append(n)
+    if not names and not effects:
+        return []
     values = [["True", "False"] if spec.inputs[n].type == "bool" else spec.enums[spec.inputs[n].type] for n in names]
-    return [dict(zip(names, combo)) for combo in itertools.product(*values)] if names else []
+    values += [spec.effect_info[e].outcomes for e in effects]
+    return [(dict(zip(names, combo[:len(names)])), dict(zip(effects, combo[len(names):])))
+            for combo in itertools.product(*values)]
 
 
-def active(spec: Spec, step, data: dict[str, str]) -> bool:
-    """条件つきの手順を、このデータで行うか（表がその出力を True と決めたか）。"""
+def active(spec: Spec, step, data: dict[str, str], outcomes: dict[str, str] | None = None) -> bool:
+    """条件つきの手順を行うか。「表.出力」は表がその出力を True と決めたとき、「作用=結果」はその作用の結果のとき。"""
     if not step.when:
         return True
+    if "=" in step.when:
+        eff, _, want = step.when.partition("=")
+        info = spec.effect_info.get(eff)
+        got = (outcomes or {}).get(eff) or (info.outcomes[0] if info and info.outcomes else None)
+        return got == want
     from .examples import Examples
     tid, _, out = step.when.rpartition(".")
     t = next((x for x in spec.tables if x.id == tid), None)
@@ -283,12 +308,15 @@ def active(spec: Spec, step, data: dict[str, str]) -> bool:
 def scenarios(spec: Spec, op: Operation) -> list[Scenario]:
     combos = _conditions(spec, op)
     if combos:
-        # 条件の組み合わせごとに正常の筋書きを動かし、ほかの筋書きはすべての手順を行う組み合わせで動かす
-        full = next((c for c in combos if all(active(spec, st, c) for st in op.steps)), combos[0])
-        out = [Scenario("正常（" + "・".join(f"{k}={v}" for k, v in c.items()) + "）", data=c) for c in combos]
+        # 分かれ方ごとに正常の筋書きを動かし、ほかの筋書きはできるだけ多くの手順を行う分かれ方で動かす
+        def label(d, o):
+            return "・".join([f"{k}={v}" for k, v in d.items()] + [f"{k}：{v}" for k, v in o.items()])
+        full = max(combos, key=lambda c: sum(active(spec, st, c[0], c[1]) for st in op.steps))
+        out = [Scenario(f"正常（{label(d, o)}）", data=d, outcomes=o) for d, o in combos]
         rest = _scenarios(spec, op)[1:]
         for sc in rest:
-            sc.data = full
+            sc.data = full[0]
+            sc.outcomes = {**full[1], **sc.outcomes}
         return out + rest
     return _scenarios(spec, op)
 
@@ -302,8 +330,11 @@ def _scenarios(spec: Spec, op: Operation) -> list[Scenario]:
         for kind in spec.effects.get(effect, []):
             key = f"{effect}.{kind}"
             if key in op.handlers:
+                reach = _lead(spec, op, effect)  # 扱いの中でだけ使う作用なら、そこまで届く分かれ道
                 for label, choice, seq in expand(spec, op, effect, op.handlers[key]):
-                    out.append(Scenario(f"{key}{label}", failure=(effect, kind), expect=seq, **choice))
+                    merged = {**reach, **choice,
+                              "outcomes": {**reach.get("outcomes", {}), **choice.get("outcomes", {})}}
+                    out.append(Scenario(f"{key}{label}", failure=(effect, kind), expect=seq, **merged))
             else:
                 out.append(Scenario(key, failure=(effect, kind), **_lead(spec, op, effect)))
     for k in range(1, len(op.steps)):
@@ -333,24 +364,27 @@ def _rest(op: Operation, effect: str) -> list[tuple[str, str]]:
     """失敗した手順より後の、仕様の手順。"""
     point = _failure_point(None, op, effect)
     idx = next((i for i, s in enumerate(op.steps) if (s.kind, s.target) == (point, effect)), None)
-    return [] if idx is None else [(s.kind, s.target) for s in op.steps[idx + 1:]]
+    return [] if idx is None else list(op.steps[idx + 1:])
 
 
 def expand(spec: Spec, op: Operation, failed: str, hs: list[Handle]):
     """手順で書いた扱いを、分かれ道ごとの筋書きにする。(名前, Scenario への選択, 失敗のあとの動き) の並び。"""
     point = _failure_point(spec, op, failed)
-    rest = _rest(op, failed)
+    after = _rest(op, failed)
+
+    def rest_for(choice):
+        return [(s.kind, s.target) for s in after if active(spec, s, {}, choice.get("outcomes"))]
 
     def walk(hs, seq, choice, label):
         for i, h in enumerate(hs):
             if h.kind in ("confirm", "call", "send", "await", "update"):
                 seq = seq + [(h.kind, h.target)]
             elif h.kind == "resume":
-                yield label, choice, seq + rest
+                yield label, choice, seq + rest_for(choice)
                 return
             elif h.kind == "retry":
                 yield from ([] if choice.get("retry_ok") is False else
-                            [(label + "（再試行で直る）", {**choice, "retry_ok": True}, seq + [(point, h.target)] + rest)])
+                            [(label + "（再試行で直る）", {**choice, "retry_ok": True}, seq + [(point, h.target)] + rest_for(choice))])
                 if choice.get("retry_ok") is True:
                     return
                 choice = {**choice, "retry_ok": False}
@@ -391,7 +425,7 @@ def _run(spec: Spec, op: Operation, fn: Callable, sc: Scenario, used: dict):
     """筋書きを1つ動かし、仕様と違えば (仕様, 実装) の説明を返す。"""
     world = World(spec, op, sc)
     data = {**sample_data(spec), **sc.data}
-    want = [(s.kind, s.target) for s in op.steps if active(spec, s, data)]
+    want = [(s.kind, s.target) for s in op.steps if active(spec, s, data, sc.outcomes)]
     traces = []
     stopped = False
     for attempt in range(2 if sc.stop_after else 1):
@@ -425,7 +459,7 @@ def _run(spec: Spec, op: Operation, fn: Callable, sc: Scenario, used: dict):
             act = f"{i + 1}番目に{_labels([trace[i]])}" if i < len(trace) else f"{len(trace)}番目の手順で終わった"
             return exp, act
         if stopped:
-            steps = [s for s in op.steps if active(spec, s, data)]
+            steps = [s for s in op.steps if active(spec, s, data, sc.outcomes)]
             missing = [_label(s) for s in steps if s.kind == "update" and s.target not in world.updates]
             missing += [_label(s) for s in steps if s.kind in ("call", "send")
                         and not any(e == s.target for e, _ in world.executions)]

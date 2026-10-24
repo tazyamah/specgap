@@ -16,7 +16,6 @@ next_order_state = decide.machine("注文")
 
 from specgap.operations import EffectFailure  # noqa: E402
 
-LOG = "通信エラーと照会の結果をログに残す"
 mail_rule = decide.table("メールで知らせるか")
 
 
@@ -25,38 +24,75 @@ def execute_refund(ctx):
         return
     ctx.update("承認した返金額を記録し、注文を返金処理中にする")
     d = ctx.data
-
-    def pay():
-        ctx.call("決済API", 注文番号=d["注文番号"], 返金額=d["返金額"], 決済ID=d["決済ID"])
-
     try:
-        pay()
+        _pay(ctx)
     except EffectFailure as f:
         ctx.handled(f.key)
-        if f.key != "決済API.通信エラー":
-            return  # タイムアウト・拒否は文章の扱い（照会して保留、返金失敗として通知）
-        try:
-            got = ctx.call("返金状況の照会", 注文番号=d["注文番号"])  # 照会せずに再試行すると二重に返金しうる
-        except EffectFailure as g:
-            ctx.handled(g.key)  # 保留にして時間をおいて照会し直す
+        if f.key == "決済API.拒否":
+            ctx.update("返金失敗として記録する")
+            _notify(ctx, "返金失敗")
             return
-        ctx.update(LOG)
+        # タイムアウト・通信エラー：照会せずに再試行すると二重に返金しうるので、先に照会する
+        kind = "タイムアウト" if f.key == "決済API.タイムアウト" else "通信エラー"
+        try:
+            got = ctx.call("返金状況の照会", 注文番号=d["注文番号"])
+        except EffectFailure as g:
+            ctx.handled(g.key)
+            ctx.update("返金を保留にする")  # あとで「保留中の返金を照会し直す」が照会する
+            return
+        ctx.update(f"{kind}と照会の結果をログに残す")
         if got["結果"] == "未返金":
             try:
-                pay()  # 再試行は1回だけ（D40）
+                _pay(ctx)  # 再試行は1回だけ（D40・D45）
             except EffectFailure:
-                ctx.update("返金失敗として記録する")
-                try:
-                    ctx.send("担当者への通知", 注文番号=d["注文番号"], 決済ID=d["決済ID"], 通知の件名=d["通知の件名"],
-                             通知の種類="返金失敗")
-                except EffectFailure as n:
-                    ctx.handled(n.key)
+                if kind == "タイムアウト":
+                    ctx.update("返金を保留にする")
+                    _notify(ctx, "返金の保留")
+                else:
+                    ctx.update("返金失敗として記録する")
+                    _notify(ctx, "返金失敗")
                 return
+    _finish(ctx)
+
+
+def requery_held_refund(ctx):
+    """保留中の返金を、時間をおいて照会し直す。照会の再試行は1回だけ（D46）。"""
+    d = ctx.data
+    for attempt in range(2):
+        try:
+            got = ctx.call("返金状況の照会", 注文番号=d["注文番号"])
+            break
+        except EffectFailure as f:
+            ctx.handled(f.key)
+            if attempt == 1:
+                ctx.update("返金を保留のままにする")
+                _notify(ctx, "返金状況を照会できない")
+                return
+    if got["結果"] == "返金済み":
+        _finish(ctx)
+    else:  # 自動で返金し直すと二重返金になりうるので、担当者の判断を待つ
+        ctx.update("返金を保留のまま担当者の判断を待つ")
+        _notify(ctx, "返金の保留")
+
+
+def _pay(ctx):
+    d = ctx.data
+    ctx.call("決済API", 注文番号=d["注文番号"], 返金額=d["返金額"], 決済ID=d["決済ID"])
+
+
+def _finish(ctx):
+    d = ctx.data
     ctx.update("注文を返金済みにする")
     try:
         ctx.send("返金完了メール", メールアドレス=d["メールアドレス"], 氏名=d["氏名"], 返金額=d["返金額"])
     except EffectFailure as f:
-        ctx.handled(f.key)  # 送れなかったことを記録するだけ
+        ctx.handled(f.key)
+        ctx.update("返金完了メールを送れなかったことを記録する")
+
+
+def _notify(ctx, kind):
+    d = ctx.data
+    ctx.send("担当者への通知", 注文番号=d["注文番号"], 決済ID=d["決済ID"], 通知の件名=d["通知の件名"], 通知の種類=kind)
 
 
 def notify_staff(ctx):
