@@ -55,7 +55,7 @@ def test_効いていた場所が消えた判断は確認に回す(tmp_path):
 
 def test_判断を_ADR_として書き出す(tmp_path, capsys):
     assert main(["decisions", str(INTERVIEWED), "-o", str(tmp_path)]) == 0
-    assert "53 件の判断" in capsys.readouterr().out
+    assert "57 件の判断" in capsys.readouterr().out
     d22 = (tmp_path / "D22.md").read_text(encoding="utf-8")
     assert d22.startswith("# D22: 外への依頼の前に処理中と記録し")
     assert "> そうだね。それでいいや。6は担当者で。" in d22
@@ -113,3 +113,11 @@ def test_実装に任せた行は_otherwise_が決める(tmp_path):
         assert decide.table("表", otherwise=lambda 日数: 日数 * 10)(日数=7) == 70
     finally:
         decide.use(None)
+
+
+def test_一部の場所だけをあとの判断が消した判断は_生きたまま問わない():
+    spec = load(Path(__file__).parent.parent / "examples" / "shop_v1_interviewed.yaml")
+    # D4 は「不正な注文の通知」を送る手順にも効いていたが、D54 がその通知を消して担当者への通知にまとめた
+    assert "D4" in [d.id for d in current(spec)]
+    assert not any("判断 D4（" in f.title for f in check(spec).findings)
+    assert not exists(spec, "操作:不正な支払を記録する:手順:send:不正な注文の通知")

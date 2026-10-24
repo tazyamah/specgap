@@ -11,13 +11,13 @@ from specgap.view import render
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 
-ENTRY = {"via": "不正な注文の通知", "to": "不正な注文の詳細", "link": "不正な注文の詳細画面のリンク"}
+ENTRY = {"via": "担当者への通知", "to": "不正な注文の詳細", "link": "詳細画面のリンク"}
 PATH = "screens/管理者の画面/entries"
 
 
 @pytest.fixture
 def shop(tmp_path):
-    """会話で答えた例から、入口（D36・D37）を除いた版。"""
+    """会話で答えた例から、入口（D54・D55）を除いた版。"""
     y = _yaml()
     doc = y.load((EXAMPLES / "shop_v1_interviewed.yaml").read_text(encoding="utf-8"))
     for f in doc["screens"]:
@@ -34,7 +34,7 @@ def titles(spec, severity):
 
 def test_リンクを渡しているのに開く画面がないと確認に回す(shop):
     spec = load(shop.spec)
-    assert "不正な注文の通知 で渡す 不正な注文の詳細画面のリンク から、どの画面を開くかが決まっていません" in titles(spec, WARNING)
+    assert "担当者への通知 で渡す 詳細画面のリンク から、どの画面を開くかが決まっていません" in titles(spec, WARNING)
 
 
 def test_入口を足すと確認が消え_判断は入口を指す(shop):
@@ -43,10 +43,10 @@ def test_入口を足すと確認が消え_判断は入口を指す(shop):
     spec = load(shop.work)
     flow = next(f for f in spec.screen_flows if f.id == "管理者の画面")
     assert [(e.via, e.dst, e.link) for e in flow.entries] == [tuple(ENTRY.values())]
-    assert not any("不正な注文の詳細画面のリンク" in t for t in titles(spec, WARNING))
-    assert spec.decisions[-1].applies_to == ["画面:管理者の画面:入口:不正な注文の通知"]
-    assert exists(spec, "画面:管理者の画面:入口:不正な注文の通知")
-    assert any("不正な注文の通知 のリンク（不正な注文の詳細画面のリンク） → 不正な注文の詳細" in c for c in res.changes)
+    assert not any("担当者への通知 で渡す" in t for t in titles(spec, WARNING))
+    assert spec.decisions[-1].applies_to == ["画面:管理者の画面:入口:担当者への通知"]
+    assert exists(spec, "画面:管理者の画面:入口:担当者への通知")
+    assert any("担当者への通知 のリンク（詳細画面のリンク） → 不正な注文の詳細" in c for c in res.changes)
 
 
 def test_入口からだけ入れる画面は_たどり着ける(shop):
@@ -60,8 +60,8 @@ def test_入口からだけ入れる画面は_たどり着ける(shop):
 
 @pytest.mark.parametrize("entry, severity, text", [
     ({"via": "無い通知", "to": "不正な注文の詳細"}, ERROR, "定義されていない連携 無い通知"),
-    ({**ENTRY, "link": "重複した発送の詳細画面のリンク"}, ERROR, "を、不正な注文の通知 で渡していません"),
-    ({"via": "不正な注文の通知", "to": "不正な注文の詳細"}, WARNING, "開くリンクにあたるデータが決まっていません"),
+    ({**ENTRY, "link": "住所"}, ERROR, "を、担当者への通知 で渡していません"),
+    ({"via": "担当者への通知", "to": "不正な注文の詳細"}, WARNING, "開くリンクにあたるデータが決まっていません"),
 ])
 def test_入口の誤り(shop, entry, severity, text):
     assert change(shop, [{"op": "add", "path": PATH, "value": entry}], "x").ok
@@ -73,8 +73,8 @@ def test_入口は図と差分に出る(shop):
     assert change(shop, [{"op": "add", "path": PATH, "value": ENTRY}], "x").ok
     head = load(shop.work)
     html = render(head, check(head), base=base)
-    assert "✉ 不正な注文の通知" in html and "最初の画面を通らずに 不正な注文の詳細 を開きます" in html
-    assert any(c.area == "画面" and "不正な注文の通知 のリンク" in c.text for c in diff(base, head).changes)
+    assert "✉ 担当者への通知" in html and "最初の画面を通らずに 不正な注文の詳細 を開きます" in html
+    assert any(c.area == "画面" and "担当者への通知 のリンク" in c.text for c in diff(base, head).changes)
 
 
 def test_最初の画面を変えると差分に出て_判断は画面の流れを指す(shop):

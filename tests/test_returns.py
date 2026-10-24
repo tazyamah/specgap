@@ -14,7 +14,7 @@ REQUERY = next(o for o in SHOP.operations if o.id == "処理中の返品を照�
 
 def notify(ctx, kind):
     d = ctx.data
-    ctx.send("担当者への通知", 注文番号=d["注文番号"], 決済ID=d["決済ID"], 通知の件名=d["通知の件名"], 通知の種類=kind)
+    ctx.send("担当者への通知", 注文番号=d["注文番号"], 決済ID=d["決済ID"], 通知の件名=d["通知の件名"], 通知の種類=kind, 詳細画面のリンク=d["詳細画面のリンク"])
 
 
 def pickup(ctx, *, report=True):

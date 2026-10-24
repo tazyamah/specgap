@@ -348,8 +348,16 @@ class _Checker:
             for x in d.supersedes:
                 if x not in ids:
                     self.report.add(ERROR, "判断", f"判断 {d.id} が置き換える {x} がありません")
+        removed: dict[str, int] = {}  # あとの判断が消したもの（名前 → 消した判断の位置）
+        for i, d in enumerate(self.spec.decisions):
+            for r in d.applies_to:
+                if r.endswith("（削除）"):
+                    removed[r.removesuffix("（削除）").rsplit("/", 1)[-1]] = i
+        order = {d.id: i for i, d in enumerate(self.spec.decisions)}
         for d in decisions.current(self.spec):
-            gone = [r for r in d.applies_to if not decisions.exists(self.spec, r)]
+            # 一部の場所だけを、あとの判断が消したなら、残りの場所で判断は生きている
+            gone = [r for r in d.applies_to if not decisions.exists(self.spec, r)
+                    and removed.get(r.rsplit(":", 1)[-1], -1) <= order[d.id]]
             if gone:
                 self.report.add(
                     WARNING, "判断", f"判断 {d.id}（{d.title or d.answer}）が効いていた場所が正本にありません",

@@ -17,7 +17,7 @@ def notify(ctx, *, always=False, skip_board=False):
     if not always and not decide.table("メールで知らせるか")(通知の種類=d["通知の種類"])["メールで送る"]:
         return
     try:
-        ctx.send("担当者へのメール", 注文番号=d["注文番号"], 通知の件名=d["通知の件名"])
+        ctx.send("担当者へのメール", 注文番号=d["注文番号"], 通知の件名=d["通知の件名"], 詳細画面のリンク=d["詳細画面のリンク"])
     except EffectFailure as f:
         ctx.handled(f.key)
         ctx.update("通知欄に未送信と出す")
@@ -68,7 +68,7 @@ def requery(ctx, *, repay=False):
         ctx.send("返金完了メール", メールアドレス=d["メールアドレス"], 氏名=d["氏名"], 返金額=d["返金額"])
     else:
         ctx.update("返金を保留のまま担当者の判断を待つ")
-        ctx.send("担当者への通知", 注文番号=d["注文番号"], 決済ID=d["決済ID"], 通知の件名=d["通知の件名"], 通知の種類="返金の保留")
+        ctx.send("担当者への通知", 注文番号=d["注文番号"], 決済ID=d["決済ID"], 通知の件名=d["通知の件名"], 通知の種類="返金の保留", 詳細画面のリンク=d["詳細画面のリンク"])
 
 
 def test_作用の結果で分かれる手順は結果ごとに確かめる():
