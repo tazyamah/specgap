@@ -55,7 +55,7 @@ def test_効いていた場所が消えた判断は確認に回す(tmp_path):
 
 def test_判断を_ADR_として書き出す(tmp_path, capsys):
     assert main(["decisions", str(INTERVIEWED), "-o", str(tmp_path)]) == 0
-    assert "28 件の判断" in capsys.readouterr().out
+    assert "35 件の判断" in capsys.readouterr().out
     d22 = (tmp_path / "D22.md").read_text(encoding="utf-8")
     assert d22.startswith("# D22: 外への依頼の前に処理中と記録し")
     assert "> そうだね。それでいいや。6は担当者で。" in d22

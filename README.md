@@ -210,7 +210,7 @@ rules:
 
 格子にできる表（整数の入力が1つまでで、列が多すぎない表）だけが対象です。
 
-AI から使うときは MCP サーバー（`python -m specgap mcp`、設定はリポジトリの `.mcp.json`）の道具 `next_question` と `answer_question` を使います。道具は2つだけです。
+AI から使うときは MCP サーバー（`python -m specgap mcp`、設定はリポジトリの `.mcp.json`）の道具 `next_question`・`answer_question`・`change_spec` を使います。
 レビュー画面は読む場所と記録のままにし、入力欄は付けません。
 
 ## 道具で受けられなかった答えを受ける（試作7）
