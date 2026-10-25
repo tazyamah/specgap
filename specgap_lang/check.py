@@ -186,14 +186,26 @@ class Checker:
         for n, _ in tg.params:
             if n not in have:
                 self.d(ERROR, "トリガ", where, f"トリガ {trig} の引数「{n}」を、処理 {proc} は入力にもっていません")
+        mine = {n: show_type(t) for n, t in self.procs[proc].inputs}
+        for n, t in tg.params:
+            if n in mine and mine[n] != show_type(t):
+                self.d(ERROR, "トリガ", where, f"トリガ {trig} の引数「{n}」の型が、処理 {proc} の入力と違います")
 
     def check_triggers(self):
         waited = set()
         for fl in self.p.flows:
             for _, routes in fl.entries:
                 waited |= {d.split(" ", 1)[1] for _, d in routes if d.startswith("待つ ")}
+        names = [t.name for t in self.p.triggers]
         for tg in self.p.triggers:
             where = f"トリガ {tg.name}"
+            if names.count(tg.name) > 1:
+                self.d(ERROR, "トリガ", where, "同じ名前のトリガが複数あります")
+            deadlines = [key for k, key, _ in tg.causes if k == "期限"]
+            if len(deadlines) > 1:
+                self.d(ERROR, "トリガ", where, "期限が複数あります（先に起きた方が勝つので、長い方は起きません）")
+            if any(int(x) <= 0 for x in deadlines):
+                self.d(ERROR, "トリガ", where, "期限は0より長くしてください")
             if not any(k == "期限" for k, _, _ in tg.causes):
                 self.d(ERROR, "トリガ", where, "期限がありません（待ち続けないよう、期限と期限切れの行き先が必要です）")
             if not any(k == "応答" for k, _, _ in tg.causes):
@@ -206,8 +218,8 @@ class Checker:
                 proc = self.procs.get(dest)
                 if proc is None:
                     self.d(ERROR, "トリガ", where, f"要因「{k} {key}」の行き先「{dest}」が未定義の処理です")
-                elif [n for n, _ in proc.inputs] != [n for n, _ in tg.params]:
-                    self.d(ERROR, "トリガ", where, f"行き先の処理 {dest} の入力が、トリガの引数と合いません")
+                elif [(n, show_type(t)) for n, t in proc.inputs] != [(n, show_type(t)) for n, t in tg.params]:
+                    self.d(ERROR, "トリガ", where, f"行き先の処理 {dest} の入力（名前と型）が、トリガの引数と合いません")
             if tg.name not in waited:
                 self.d(WARN, "トリガ", where, "どのフローからも「待つ」で作られていません")
 

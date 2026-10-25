@@ -218,3 +218,9 @@ def test_計画にあるトリガの行き先がコードと違えば検出す�
 def test_入力の範囲が項目より広いと止まる():
     ck = chk(mutate(CODE, "入力 顧客ID: ID, 明細: 商品 → 整数 1..99", "入力 顧客ID: ID, 明細: 商品 → 整数 1..200"))
     assert any("範囲の広い入力" in m for m in msgs(ck, ERROR))
+
+
+def test_トリガの型の食い違いと期限の誤りは止まる():
+    assert any("型" in m for m in msgs(chk(mutate(CODE, "トリガ 決済待ち(注文ID: ID)", "トリガ 決済待ち(注文ID: 整数)")), ERROR))
+    assert any("期限が複数" in m for m in msgs(chk(mutate(CODE, "  期限 30 分 → 決済の期限切れ", "  期限 30 分 → 決済の期限切れ\n  期限 1 時間 → 決済の期限切れ")), ERROR))
+    assert any("0より長く" in m for m in msgs(chk(mutate(CODE, "期限 30 分", "期限 0 分")), ERROR))
