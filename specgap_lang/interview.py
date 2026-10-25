@@ -55,7 +55,7 @@ def usecase_gaps(u: dict) -> list[str]:
     if not u.get("examples"):
         gaps.append("具体例が未記入")
     if u.get("level") not in LEVELS:
-        gaps.append(f"目標の粒度が未記入（{'／'.join(LEVELS)}）")
+        gaps.append(f"ユースケースの粒度が未記入（{'／'.join(LEVELS)}）")
     return gaps
 
 
@@ -71,7 +71,7 @@ def status(led: dict) -> tuple[list[str], bool]:
     if not led["out_of_scope"]:
         todo.append("範囲外（out_of_scope）。無ければ「なし」と記入")
     if not led["usecases"]:
-        todo.append("アクターと目標の一覧（usecases）。「他に使う人は？ 他にやりたいことは？」と聞く")
+        todo.append("アクターとユースケースの一覧（usecases）。「他に使う人は？ 他にやりたいことは？」と聞く")
     for u in led["usecases"]:
         for g in usecase_gaps(u):
             todo.append(f"{u['id']} {u.get('goal', '')}: {g}")

@@ -1,0 +1,20 @@
+{
+  "title": "ひとり用つぶやき",
+  "summary": "ひとり用のTwitterのようなアプリ（tazyamahの第一手の発言そのまま）",
+  "out_of_scope": [],
+  "usecases": [],
+  "questions": [],
+  "extras": [],
+  "runtime": {},
+  "judgments": [
+    {
+      "id": "J1",
+      "rule": "作るものは、ひとり用のTwitterのようなアプリ",
+      "sources": [
+        "ひとり用twitterみたいなアプリを作りたい。"
+      ],
+      "who": "tazyamah",
+      "when": "2026-10-25T22:40"
+    }
+  ]
+}
