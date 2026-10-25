@@ -9,7 +9,7 @@
   questions[] id, text, usecase(任意), status(open|unspec|answered), answer   未解決の問い（unspec＝意図的に未規定）
   extras[]    id, text, from_usecase, kind(runtime|constraint|quality|other)    返答に混ざっていた付加情報の置き場
   runtime{}   R1..R7 の答え（値と来歴）
-  judgments[] id, question, answer, who, when                                 判断の記録
+  judgments[] id, rule, sources[], who, when    判断（J）。AI が解釈した**ルール1つにつき1件**。sources は元の発言（複数可。1つの発言から複数のJ、複数の発言から1つのJもある）
 """
 import json
 from pathlib import Path
@@ -130,6 +130,6 @@ def render(led: dict) -> str:
         out += [""]
     out += ["## C4. 未解決の問い", "", "| ID | 問い | 状態 | 答え |", "|---|---|---|---|"]
     out += [f"| {q['id']} | {q['text']} | {q.get('status', 'open')} | {q.get('answer', '')} |" for q in led["questions"]] or []
-    out += ["", "## C5. 判断の記録", "", "| ID | 問い | 答え | 誰が | いつ |", "|---|---|---|---|---|"]
-    out += [f"| {j['id']} | {j['question']} | {j['answer']} | {j.get('who', '')} | {j.get('when', '')} |" for j in led["judgments"]]
+    out += ["", "## C5. 判断の記録", "", "| ID | ルール（AIの解釈） | 元の発言 | 誰が | いつ |", "|---|---|---|---|---|"]
+    out += [f"| {j['id']} | {j['rule']} | {' ／ '.join(j.get('sources', []))} | {j.get('who', '')} | {j.get('when', '')} |" for j in led["judgments"]]
     return "\n".join(out) + "\n"
