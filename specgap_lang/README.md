@@ -29,9 +29,9 @@ python -m specgap_lang compare ... --no-run                                     
 ## 初回の対話の台帳（interview）
 
 ```
-python -m specgap_lang interview 台帳.json init --title 題名   # 台帳を作る
-python -m specgap_lang interview 台帳.json status             # 次に聞くこと。揃うまで「コードを書き始めてよい: いいえ」
-python -m specgap_lang interview 台帳.json render -o plan.md  # plan（①）の会話の部分を Markdown に
+python -m specgap_lang interview init 台帳.json --title 題名   # 台帳を作る
+python -m specgap_lang interview status 台帳.json             # 次に聞くこと。揃うまで「コードを書き始めてよい: いいえ」
+python -m specgap_lang interview render 台帳.json -o plan.md  # plan（①）の会話の部分を Markdown に
 ```
 
 会話の進め方は `skills/plan-interview/SKILL.md`（Cockburn のユースケースを一問一答で聞く。付加情報は仕分け、コードを書く前に動作要件 R1〜R7 を聞く）。台帳は plan の元で、コードから作らない。暫定の Python 実装。
