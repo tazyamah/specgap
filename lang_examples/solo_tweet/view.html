@@ -1,0 +1,286 @@
+<title>ひとり用つぶやき 設計図</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* 配色: 紙のような中性色に、青みのある一色。状態の色は意味ごとに別（注意=琥珀、エラー=赤、反映前=青緑） */
+:root {
+  --bg: #f6f6f3; --panel: #ffffff; --fg: #1f2328; --muted: #656d76; --line: #d8d8d2;
+  --accent: #2d5be3; --accent-soft: #e6ecfd; --warn: #8a5a00; --warn-soft: #fbf0d4;
+  --err: #b42318; --err-soft: #fde7e4; --pend: #0d6e6e; --pend-soft: #dcf2f0; --screen: #fbfbf9;
+  --font: "Hiragino Sans", "Noto Sans JP", "Yu Gothic", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161a; --panel: #1c1f24; --fg: #e6e8eb; --muted: #9aa3ad; --line: #353a42;
+    --accent: #7c9bff; --accent-soft: #232c4d; --warn: #f0c36a; --warn-soft: #3a2f12;
+    --err: #ff8f84; --err-soft: #43201d; --pend: #6ed0cb; --pend-soft: #12332f; --screen: #181b20; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14161a; --panel: #1c1f24; --fg: #e6e8eb; --muted: #9aa3ad; --line: #353a42;
+  --accent: #7c9bff; --accent-soft: #232c4d; --warn: #f0c36a; --warn-soft: #3a2f12;
+  --err: #ff8f84; --err-soft: #43201d; --pend: #6ed0cb; --pend-soft: #12332f; --screen: #181b20; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--font); line-height: 1.7;
+  padding-block: 24px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 980px; margin: 0 auto; }
+h1 { font-size: 1.5rem; margin: 0 0 4px; text-wrap: balance; }
+h2 { font-size: 1.15rem; margin: 0 0 8px; }
+.lead { color: var(--muted); margin: 0 0 20px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab { font: inherit; padding: 8px 16px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 8px; cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tab:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+section.view { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+.note { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 10px 14px; font-size: .9rem; margin: 12px 0 0; }
+svg { display: block; width: 100%; height: auto; }
+figcaption { color: var(--muted); font-size: .88rem; margin-top: 8px; }
+.diagram { overflow-x: auto; }
+.diagram svg { min-width: 640px; }
+.uc-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 16px; }
+.uc-list div { border-top: 2px solid var(--accent); padding-top: 6px; font-size: .9rem; }
+.uc-list b { display: block; }
+.stage { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 24px; align-items: start; }
+@media (max-width: 760px) { .stage { grid-template-columns: 1fr; } }
+.phone { border: 2px solid var(--fg); border-radius: 22px; padding: 10px; background: var(--panel); max-width: 380px; width: 100%; }
+.screen { background: var(--screen); border: 1px solid var(--line); border-radius: 14px; height: 560px; position: relative; display: flex; flex-direction: column; overflow: hidden; }
+.topbar { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); }
+.topbar button { flex: 1; }
+.scroll { flex: 1; overflow-y: auto; padding: 10px; }
+.screen button, .ctrl button, .ctrl select { font: inherit; font-size: .88rem; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+.screen button.on, .ctrl button.on { background: var(--accent-soft); border-color: var(--accent); }
+.screen button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.screen button:disabled { opacity: .4; cursor: not-allowed; }
+.form { border: 1px dashed var(--line); border-radius: 10px; padding: 8px; display: grid; gap: 6px; margin-bottom: 10px; background: var(--panel); }
+textarea, .screen input[type="text"], .screen input[type="date"] { font: inherit; font-size: .9rem; width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: var(--screen); color: var(--fg); }
+textarea { resize: none; height: 56px; }
+.row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.row .grow { flex: 1; }
+.post { border-bottom: 1px solid var(--line); padding: 8px 2px; font-size: .9rem; }
+.meta { color: var(--muted); font-size: .78rem; }
+.thumb { display: inline-block; width: 52px; height: 40px; border-radius: 6px; border: 1px solid var(--line); background: repeating-linear-gradient(45deg, var(--line) 0 4px, transparent 4px 8px); vertical-align: middle; margin-right: 6px; }
+.badge { font-size: .72rem; border-radius: 999px; padding: 1px 8px; background: var(--pend-soft); color: var(--pend); margin-left: 6px; }
+.banner { font-size: .82rem; padding: 6px 10px; border-radius: 8px; margin-bottom: 8px; }
+.banner.off { background: var(--pend-soft); color: var(--pend); }
+.banner.err { background: var(--err-soft); color: var(--err); }
+.empty { text-align: center; color: var(--muted); padding: 32px 0; }
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; margin-right: 8px; vertical-align: -2px; animation: sp 1s linear infinite; }
+@keyframes sp { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.totop { position: absolute; right: 12px; bottom: 12px; border-radius: 999px !important; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.ctrl { display: grid; gap: 14px; }
+.ctrl fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 0; }
+.ctrl legend { font-size: .85rem; color: var(--muted); padding: 0 6px; }
+.ctrl .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.ctrl label { font-size: .9rem; display: flex; gap: 8px; align-items: center; }
+.explain { background: var(--accent-soft); border-radius: 10px; padding: 12px 14px; font-size: .92rem; min-height: 4.2em; }
+.explain small { color: var(--muted); display: block; margin-top: 4px; }
+.chat { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 8px; max-width: 560px; background: var(--screen); }
+.bubble { padding: 8px 12px; border-radius: 12px; max-width: 88%; font-size: .92rem; }
+.bubble.me { background: var(--accent); color: #fff; justify-self: end; }
+.bubble.ai { background: var(--panel); border: 1px solid var(--line); }
+</style>
+
+<div class="wrap">
+  <h1>ひとり用つぶやき 設計図</h1>
+  <p class="lead">ここまでの24問の答え（判断J1〜J33）を、図と画面の動きで見られるようにしたものです。間違いは文章でなく、この画面で見つけて指摘してください。</p>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t-uc" aria-selected="true" data-view="uc">ユースケース図</button>
+    <button class="tab" role="tab" id="t-wf" aria-selected="false" data-view="wf">画面の動き（さわれます）</button>
+    <button class="tab" role="tab" id="t-ai" aria-selected="false" data-view="ai">AIに見てもらう</button>
+  </div>
+
+  <section class="view" id="view-uc">
+    <h2>誰が何をするか</h2>
+    <figure class="diagram" style="margin:0">
+      <svg viewBox="0 0 760 420" role="img" aria-label="本人が、書く・見る・探す・AIに見てもらうの4つを行う。Dropboxは記録の置き場、AIはDropboxを見る">
+        <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+        <rect x="170" y="14" width="420" height="392" rx="14" fill="none" stroke="currentColor" stroke-opacity=".45" stroke-dasharray="6 5"/>
+        <text x="190" y="38" font-size="13" fill="currentColor" fill-opacity=".7">ひとり用つぶやき（ブラウザで開く画面）</text>
+        <!-- 本人 -->
+        <g stroke="currentColor" stroke-width="2" fill="none"><circle cx="64" cy="190" r="14"/><path d="M64 204V252M36 222H92M64 252L44 290M64 252L84 290"/></g>
+        <text x="64" y="316" font-size="14" text-anchor="middle" fill="currentColor">本人</text>
+        <text x="64" y="334" font-size="11" text-anchor="middle" fill="currentColor" fill-opacity=".7">使う人はこの1人だけ</text>
+        <!-- ユースケース -->
+        <g font-size="14" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5">
+          <ellipse cx="300" cy="96" rx="92" ry="30"/><ellipse cx="300" cy="190" rx="92" ry="30"/>
+          <ellipse cx="300" cy="284" rx="92" ry="30"/><ellipse cx="300" cy="370" rx="92" ry="26"/>
+          <ellipse cx="500" cy="96" rx="68" ry="22" stroke-dasharray="4 3"/>
+        </g>
+        <g font-size="14" text-anchor="middle" fill="currentColor">
+          <text x="300" y="92">UC1 書く</text><text x="300" y="109" font-size="11" fill-opacity=".7">つながらなくても可</text>
+          <text x="300" y="186">UC2 投稿を見る</text><text x="300" y="203" font-size="11" fill-opacity=".7">24時間ぶんは常に見える</text>
+          <text x="300" y="280">UC4 日付・単語で探す</text><text x="300" y="297" font-size="11" fill-opacity=".7">日付は片側だけでも可</text>
+          <text x="300" y="366">UC3 AIに見てもらう</text>
+          <text x="500" y="100" font-size="12">画像などを添付</text>
+        </g>
+        <!-- 本人からの線 -->
+        <g stroke="currentColor" stroke-width="1.3" fill="none">
+          <path d="M92 214L212 106"/><path d="M92 222L208 190"/><path d="M92 240L212 280"/><path d="M92 250L222 360"/>
+          <path d="M392 96H432" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+        </g>
+        <text x="412" y="86" font-size="10.5" text-anchor="middle" fill="currentColor" fill-opacity=".75">任意で追加</text>
+        <!-- 外部 -->
+        <g stroke="currentColor" stroke-width="1.5" fill="var(--panel)"><rect x="636" y="160" width="106" height="64" rx="8"/><rect x="636" y="318" width="106" height="64" rx="8"/></g>
+        <g font-size="14" text-anchor="middle" fill="currentColor">
+          <text x="689" y="188">Dropbox</text><text x="689" y="206" font-size="11" fill-opacity=".7">記録の置き場</text>
+          <text x="689" y="346">AI</text><text x="689" y="364" font-size="11" fill-opacity=".7">記録を見て答える</text>
+        </g>
+        <g stroke="currentColor" stroke-width="1.3" fill="none">
+          <path d="M392 190H636" marker-end="url(#ar)" marker-start="url(#ar)"/>
+          <path d="M384 112L636 172" marker-end="url(#ar)"/>
+          <path d="M388 364L636 350" marker-end="url(#ar)"/>
+          <path d="M689 318V224" marker-end="url(#ar)"/>
+        </g>
+        <g font-size="10.5" fill="currentColor" fill-opacity=".8" text-anchor="middle">
+          <text x="520" y="182">読む</text><text x="530" y="140">書く（投稿・添付）</text>
+          <text x="520" y="376">場所を1回だけ教える</text><text x="680" y="268" text-anchor="end">AIがDropboxの</text><text x="680" y="282" text-anchor="end">記録を読む</text>
+        </g>
+      </svg>
+      <figcaption>楕円が「本人がしたいこと」、右の四角が外にあるもの。本人は図の中でAIに記録を渡さず、AIは自分でDropboxを読みます。</figcaption>
+    </figure>
+    <div class="uc-list">
+      <div><b>UC1 書く</b>文字・ファイル・リンクを入れて送信。空のときは送信ボタンが押せない。保存に失敗したら原因を表示。圏外では端末に一時保存して、つながったら自動で反映。</div>
+      <div><b>UC2 投稿を見る</b>書く画面と同じ画面。新しい順で、下へ進むと続きが出る。添付はサムネイル。空なら「空です」、読み込み中は「読み込み中」。</div>
+      <div><b>UC3 AIに見てもらう</b>Dropboxの場所を最初の1回だけ教える。見られなかったときはAIがそう答える。</div>
+      <div><b>UC4 探す</b>日付（期間。始めか終わりの片方だけでもよい）と単語を組み合わせて探す。0件なら「1件もなかった」と表示。</div>
+    </div>
+    <p class="note">私の解釈・案の箇所：「画像などの添付は『書く』の中の1手」「日付と単語はAND（両方に合うもの）」「ブラウザで開く形」。違っていたら教えてください。</p>
+  </section>
+
+  <section class="view" id="view-wf" hidden>
+    <h2>画面の動き</h2>
+    <p class="lead" style="margin-bottom:12px">左の画面は実際にさわれます。右で「いまの状況」を切り替えると、同じ画面がどう変わるかを確認できます。レイアウトは私の案です。</p>
+    <div class="stage">
+      <div class="phone"><div class="screen" id="screen"></div></div>
+      <div class="ctrl">
+        <fieldset><legend>いまの状況</legend>
+          <div class="chips" id="modes">
+            <button data-mode="normal" class="on">ふつう</button>
+            <button data-mode="empty">投稿が0件</button>
+            <button data-mode="loading">読み込み中</button>
+            <button data-mode="offline">圏外</button>
+          </div>
+        </fieldset>
+        <fieldset><legend>失敗させてみる</legend>
+          <label><input type="checkbox" id="full"> 保存先がいっぱい（次の送信が失敗する）</label>
+        </fieldset>
+        <div class="explain" id="explain" aria-live="polite">ボタンや欄をさわると、ここに「いま何が起きたか」と根拠の判断番号が出ます。</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-ai" hidden>
+    <h2>AIに見てもらう（UC3）</h2>
+    <p class="lead">アプリの画面はありません。AIとの会話の中で、次のようになる想定です。</p>
+    <div class="chat">
+      <div class="bubble me">記録はDropboxの「ライフログ」フォルダにあります。これを見てください。<br><small>← 最初の1回だけ（J32）</small></div>
+      <div class="bubble ai">場所を覚えました。</div>
+      <div class="bubble me">病院の予約って、いつ取ったっけ？<br><small>← 以降は場所を言わなくてよい。探すのもAIが自分でやる（J20）</small></div>
+      <div class="bubble ai">3日前の投稿に「病院の予約を取った」とあります。添付の写真も確認しました。<br><small>← 添付ファイルも見る（J21）</small></div>
+      <div class="bubble me">去年の旅行の記録は？</div>
+      <div class="bubble ai">その期間の記録は見つかりませんでした。<br><small>← 見られないときはAIがそう答える。アプリは何もしない（J26）</small></div>
+    </div>
+    <p class="note">未確認：どのAIに頼むか、Dropboxの記録をAIが読めるようにする具体的な方法（読み取りの許可など）は、まだ決めていません。</p>
+  </section>
+</div>
+
+<script>
+(function () {
+  var views = { uc: "view-uc", wf: "view-wf", ai: "view-ai" };
+  document.querySelectorAll(".tab").forEach(function (t) {
+    t.addEventListener("click", function () {
+      document.querySelectorAll(".tab").forEach(function (x) { x.setAttribute("aria-selected", x === t ? "true" : "false"); });
+      Object.keys(views).forEach(function (k) { document.getElementById(views[k]).hidden = (k !== t.dataset.view); });
+    });
+  });
+
+  var DAY = 86400000, now = Date.now();
+  var posts = [
+    { t: "駅前のカフェでコーヒー。静かで良かった", at: now - 25 * 60000, att: false },
+    { t: "病院の予約 xxx を取った", at: now - 5 * 3600000, att: false },
+    { t: "散歩の写真", at: now - 2 * DAY, att: true },
+    { t: "xxx の件、本を図書館に返した", at: now - 12 * DAY, att: true },
+    { t: "新しい靴を買った", at: now - 40 * DAY, att: false }
+  ];
+  var st = { page: "main", mode: "normal", text: "", att: false, link: false, error: null, pending: [], sres: null, q: { from: "", to: "", word: "" }, shown: 5 };
+  var scr = document.getElementById("screen"), ex = document.getElementById("explain"), full = document.getElementById("full");
+
+  function say(msg, j) { ex.innerHTML = msg + (j ? "<small>根拠: " + j + "</small>" : ""); }
+  function ago(ms) { var m = Math.round((now - ms) / 60000); if (m < 60) return m + "分前"; var h = Math.round(m / 60); if (h < 48) return h + "時間前"; return Math.round(h / 24) + "日前"; }
+  function esc(s) { return s.replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+  function postHtml(p) {
+    return '<div class="post">' + (p.att ? '<span class="thumb" title="サムネイル"></span>' : "") + esc(p.t) +
+      (p.pending ? '<span class="badge">反映前</span>' : "") + '<div class="meta">' + ago(p.at) + (p.att ? " ・ 添付あり" : "") + "</div></div>";
+  }
+  function visiblePosts() {
+    var all = st.pending.concat(posts);
+    if (st.mode === "empty") return [];
+    if (st.mode === "offline") return all.filter(function (p) { return now - p.at <= DAY; });
+    return all;
+  }
+
+  function render() {
+    var h = '<div class="topbar"><button data-act="goMain" class="' + (st.page === "main" ? "on" : "") + '">書く・見る</button><button data-act="goSearch" class="' + (st.page === "search" ? "on" : "") + '">探す</button></div><div class="scroll" id="sc">';
+    if (st.page === "main") {
+      var empty = !st.text.trim() && !st.att && !st.link;
+      if (st.mode === "offline") h += '<div class="banner off">インターネットにつながっていません。書いた投稿は、つながったら自動で反映されます。</div>';
+      if (st.error) h += '<div class="banner err">記録できませんでした。原因: ' + st.error + "</div>";
+      h += '<div class="form"><textarea id="txt" placeholder="いまどうしてる？" aria-label="投稿の文字">' + esc(st.text) + '</textarea>' +
+        '<div class="row"><button data-act="att" class="' + (st.att ? "on" : "") + '">' + (st.att ? "✓ 画像を添付中" : "画像などを添付") + '</button><button data-act="link" class="' + (st.link ? "on" : "") + '">' + (st.link ? "✓ リンクあり" : "リンクを貼る") + '</button><span class="grow"></span>' +
+        '<button class="primary" data-act="send"' + (empty ? " disabled" : "") + ">送信</button></div></div>";
+      var list = visiblePosts();
+      if (st.mode === "loading") h += '<div class="empty"><span class="spin"></span>読み込み中</div>';
+      else if (!list.length) h += '<div class="empty">空です</div>';
+      else {
+        h += list.slice(0, st.shown).map(postHtml).join("");
+        if (st.mode === "offline" && posts.some(function (p) { return now - p.at > DAY; })) h += '<div class="meta" style="padding:8px 2px">つながっていないため、24時間より前の投稿は表示されません。</div>';
+        if (st.shown < list.length) h += '<div class="empty" data-act="more" style="padding:12px 0">下へ進むと続きが出ます…</div>';
+      }
+      h += '</div><button class="totop" data-act="top" aria-label="トップに戻る">↑ トップへ</button>';
+    } else {
+      h += '<div class="form"><div class="row"><label class="grow meta">いつから（空でもよい）<input type="date" id="qf" value="' + st.q.from + '"></label><label class="grow meta">いつまで（空でもよい）<input type="date" id="qt" value="' + st.q.to + '"></label></div>' +
+        '<label class="meta">単語<input type="text" id="qw" placeholder="例: xxx" value="' + esc(st.q.word) + '"></label><button class="primary" data-act="search">探す</button></div>';
+      if (st.sres) h += st.sres.length ? st.sres.map(postHtml).join("") : '<div class="empty">1件もありませんでした</div>';
+      h += "</div>";
+    }
+    scr.innerHTML = h;
+    var t = document.getElementById("txt");
+    if (t) t.addEventListener("input", function () { st.text = t.value; var b = scr.querySelector('[data-act="send"]'); b.disabled = !st.text.trim() && !st.att && !st.link; if (b.disabled) say("何も入力されていないので、送信ボタンは押せません。", "J10"); });
+  }
+
+  scr.addEventListener("click", function (e) {
+    var a = e.target.closest("[data-act]"); if (!a) return;
+    var act = a.dataset.act;
+    if (act === "goMain") { st.page = "main"; render(); say("書く画面と見る画面は同じ画面です。", "J14"); }
+    else if (act === "goSearch") { st.page = "search"; render(); say("探す機能は別の画面にしています（同じ画面でもよい、と伺っています）。", "J16"); }
+    else if (act === "att") { st.att = !st.att; render(); say(st.att ? "画像などを添付しました（デモ）。送信ボタンが押せるようになります。" : "添付を外しました。", "J4, J8"); }
+    else if (act === "link") { st.link = !st.link; render(); say("文字・ファイル・リンクのどれか1つでもあれば送信できます（組み合わせは自由）。", "J8"); }
+    else if (act === "top") { var s = document.getElementById("sc"); s.scrollTo({ top: 0, behavior: "smooth" }); say("一覧の先頭に戻ります。", "J17"); }
+    else if (act === "more") { st.shown += 5; render(); say("下へ進むと続きが出ます。", "J17"); }
+    else if (act === "send") {
+      if (full.checked) { st.error = "保存先がいっぱいです。Dropboxの空き容量を増やすか、古い添付を消してください。"; render(); say("記録に失敗したので、投稿は増えず、エラーと原因を表示します。解決策の表示は今は求めていません。", "J11"); return; }
+      st.error = null;
+      var p = { t: st.text.trim() || (st.att ? "（画像のみの投稿）" : "（リンクのみの投稿）"), at: Date.now(), att: st.att, pending: st.mode === "offline" };
+      if (p.pending) st.pending.unshift(p); else posts.unshift(p);
+      st.text = ""; st.att = false; st.link = false; st.mode = st.mode === "empty" ? "normal" : st.mode; syncModes(); render();
+      say(p.pending ? "圏外なので、端末に一時保存して一覧に出しました（「反映前」の印）。つながったら自動で記録されます。" : "投稿を記録しました。一覧の一番上に出ます。", p.pending ? "J28, J30" : "J8");
+    }
+    else if (act === "search") {
+      st.q = { from: document.getElementById("qf").value, to: document.getElementById("qt").value, word: document.getElementById("qw").value.trim() };
+      var f = st.q.from ? new Date(st.q.from).getTime() : null, to = st.q.to ? new Date(st.q.to).getTime() + DAY : null;
+      st.sres = posts.filter(function (p) { return (f === null || p.at >= f) && (to === null || p.at < to) && (!st.q.word || p.t.indexOf(st.q.word) >= 0); });
+      render(); say(st.sres.length ? "日付（片側だけでも可）と単語の両方に合う投稿を出します。" : "条件に合う投稿が1件もないので、「1件もありませんでした」と表示します。", st.sres.length ? "J23" : "J24");
+    }
+  });
+
+  function syncModes() { document.querySelectorAll("#modes button").forEach(function (b) { b.classList.toggle("on", b.dataset.mode === st.mode); }); }
+  document.getElementById("modes").addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b) return;
+    st.mode = b.dataset.mode; st.error = null; syncModes(); render();
+    say({ normal: "ふつうの状態です。サンプルの投稿が新しい順に並びます。", empty: "投稿が1件もないので「空です」と表示します。", loading: "投稿はあるが読み込み中なので、「読み込み中」と表示します。", offline: "圏外です。直近24時間ぶんだけ見られ、書いた投稿は「反映前」の印付きで出ます。" }[st.mode],
+      { normal: "J14, J15", empty: "J25", loading: "J25", offline: "J28, J29, J30" }[st.mode]);
+  });
+  render();
+})();
+</script>
