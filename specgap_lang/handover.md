@@ -20,6 +20,7 @@
 plan のドラフトを会話で作る SKILL、①の来歴（判断の番号）の扱い（plan を会話で作る SKILL は済み）。
 
 ## 初回の対話（このスレッド）
+- 将来の案（メモのみ、今は実装しない・2026-10-25 tazyamah）：最初の会話で SKILL の動作モードを選ばせる。(a)補完モード：AIがアプリの専門家として先回りして聞く（例：金銭を扱うなら経理担当者のユースケースがあるはず、と仮定して聞く）、(b)非先回りモード：人のほうが要件に詳しいので下手に先回りしない。**ユースケースについてのみ**切り替える。動作要件は、人はIT知識がない前提でAIが主導する（ビジョンはあるがIT知識がない人でも使えるツールを目指す）。
 - 台帳 specgap_lang/interview.py と skills/plan-interview/SKILL.md を追加（段階2）。次は段階3：小粒なアプリ（例：メモ・読書記録）を、短い対話の繰り返しで台帳→plan まで作って試す。
 - その前に、段階2の完了後に Opus のレビューを依頼する（tazyamah の指示）。
 - 調査メモ：/mnt/project-files/notes/spec-elicitation-survey.md（§3 の「土台を先に聞く」は旧案）、spec-runtime-requirements-checklist.md。

@@ -26,6 +26,13 @@ python -m specgap_lang compare ... --no-run                                     
 
 終了コード: 検査にエラー／突合に食い違いがあれば 1。「未規定」は食い違いに数えず、問いとして表示します。
 
+## 出典
+
+初回の対話で要件をまとめる部分（`interview` と `skills/plan-interview/`）は、Cockburn が提唱したユースケース手法に基づいています。
+Alistair Cockburn, *Writing Effective Use Cases*, Addison-Wesley, 2000（日本語訳『ユースケース実践ガイド』ウイングス）。
+「範囲 → アクターとユースケースの一覧 → 主な流れ → 拡張（失敗・例外）」と、ユースケースの粒度（要約／利用者目標／下位機能）の考え方を使っています。
+具体例とルールの聞き分けは Example Mapping、動作要件の聞き取りは Volere・arc42・ISO/IEC 25010 を参考にしています（notes/spec-runtime-requirements-checklist.md）。
+
 ## 初回の対話の台帳（interview）
 
 ```
