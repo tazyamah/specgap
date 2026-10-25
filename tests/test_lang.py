@@ -213,3 +213,8 @@ def test_計画にあるトリガの行き先がコードと違えば検出す�
     plan = mutate(PLAN, "| 期限 30分 | 決済の期限切れ |", "| 期限 30分 | 決済結果の反映 |")
     fs = compare_static(build(chk(CODE)), read_plan(plan))
     assert any(f.kind == DIFF and "トリガ" in f.where for f in fs)
+
+
+def test_入力の範囲が項目より広いと止まる():
+    ck = chk(mutate(CODE, "入力 顧客ID: ID, 明細: 商品 → 整数 1..99", "入力 顧客ID: ID, 明細: 商品 → 整数 1..200"))
+    assert any("範囲の広い入力" in m for m in msgs(ck, ERROR))

@@ -565,6 +565,7 @@ class ProcChecker:
                 self.d(ERROR, "名前", f"データ {data} に項目「{st.f}」がありません", st.line)
                 return
             self.ty(st.e)
+            self.check_range_fit(st.e, fld.type, f"{data}.{st.f}", st.line)
             info.writes.add(f"{data}.{st.f}")
             info.write_list.append(f"{data}.{st.f}")
             if fld.type.kind == "名前" and isinstance(st.e, Name):
@@ -589,6 +590,22 @@ class ProcChecker:
             if y == dst and any(a == x for a, _ in decl):
                 self.d(ERROR, "遷移", f"拒否された遷移 {x} → {y}（{why}）を行っています", line)
 
+    def check_range_fit(self, e, dst: Type, where: str, line: int):
+        """入力をそのまま項目へ入れるとき、入力の範囲が項目の範囲に収まるか。"""
+        src = next((t for n, t in self.proc.inputs if isinstance(e, Name) and n == e.n), None)
+        if src is None:
+            return
+        if src.kind == "写像" and dst.kind == "写像":
+            src, dst = src.value, dst.value
+        if src.kind not in ("整数", "金額", "割合") or src.kind != dst.kind:
+            return
+        s, d = src.range or Range(), dst.range or Range()
+        lo_ng = d.lo is not None and (s.lo is None or s.lo < d.lo)
+        hi_ng = d.hi is not None and (s.hi is None or s.hi > d.hi)
+        if lo_ng or hi_ng:
+            self.d(ERROR, "範囲", f"{where} に、範囲の広い入力「{e.n}」を入れています"
+                   f"（入力{show_range(src.range).strip() or '制限なし'} ／ 項目{show_range(dst.range).strip()}）。収まるか確認が要ります", line)
+
     def create(self, st: Create):
         ck, info = self.ck, self.info
         if st.data not in ck.data:
@@ -612,6 +629,7 @@ class ProcChecker:
                 self.d(QUESTION, "丸め", "端数が出る値を、丸めずに書いています", st.line)
             elif vt != tok_of(f.type) and not (vt in ("Int", "Money") and tok_of(f.type) in ("Int", "Money")) and vt != "?":
                 self.d(ERROR, "型", f"{st.data}.{n} に型の違う値（{vt}）を入れています", st.line)
+            self.check_range_fit(e, f.type, f"{st.data}.{n}", st.line)
             if f.type.kind == "名前" and isinstance(e, Name):
                 self.check_transition_new(st.data, n, e.n, st.line)
         info.writes.add(st.data)
