@@ -224,3 +224,41 @@ def test_トリガの型の食い違いと期限の誤りは止まる():
     assert any("型" in m for m in msgs(chk(mutate(CODE, "トリガ 決済待ち(注文ID: ID)", "トリガ 決済待ち(注文ID: 整数)")), ERROR))
     assert any("期限が複数" in m for m in msgs(chk(mutate(CODE, "  期限 30 分 → 決済の期限切れ", "  期限 30 分 → 決済の期限切れ\n  期限 1 時間 → 決済の期限切れ")), ERROR))
     assert any("0より長く" in m for m in msgs(chk(mutate(CODE, "期限 30 分", "期限 0 分")), ERROR))
+
+
+# ---- 初回の対話の台帳 ----
+def test_台帳は次に聞くことを示し_揃うまで開始不可():
+    from specgap_lang import interview as iv
+
+    led = iv.new_ledger("メモ")
+    todo, ready = iv.status(led)
+    assert not ready and any("一言" in t for t in todo)
+    led.update(summary="メモを残す", out_of_scope=["共有"])
+    led["usecases"].append({"id": "UC1", "actor": "本人", "goal": "メモを書く", "level": "利用者目標",
+                            "main": ["書く", "保存する"], "extensions": [{"at": "2", "cond": "容量不足", "handling": "エラー表示"}],
+                            "examples": [{"given": "空", "when": "書く", "then": "1件"}]})
+    todo, ready = iv.status(led)
+    assert not ready and any("R1" in t for t in todo)
+    led["runtime"] = {k: {"value": "x"} for k in iv.RUNTIME}
+    assert iv.status(led) == ([], True)
+
+
+def test_未解決の問いと未仕分けの付加情報は開始を止める():
+    from specgap_lang import interview as iv
+
+    led = iv.new_ledger("メモ")
+    led.update(summary="a", out_of_scope=["b"], runtime={k: {"value": "x"} for k in iv.RUNTIME})
+    led["usecases"].append({"id": "UC1", "level": "利用者目標", "main": ["a"], "extensions": [{"at": "1", "cond": "c", "handling": "h"}], "examples": [{"given": "g", "when": "w", "then": "t"}]})
+    led["questions"].append({"id": "Q1", "text": "空のとき", "status": "open"})
+    assert not iv.status(led)[1]
+    led["questions"][0]["status"] = "unspec"
+    led["extras"].append({"id": "X1", "text": "スマホで使いたい"})
+    assert any("仕分け" in t for t in iv.status(led)[0])
+
+
+def test_台帳から出したplanの表は突合の対象にならない():
+    from specgap_lang import interview as iv
+
+    led = iv.new_ledger("メモ")
+    led["usecases"].append({"id": "UC1", "goal": "書く", "main": ["書く"]})
+    assert read_plan(iv.render(led)) == {}
