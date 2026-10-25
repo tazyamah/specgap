@@ -170,37 +170,37 @@
       "id": "X1",
       "text": "PCやスマホで記録する（複数の端末で使う）",
       "from_usecase": "全体",
-      "kind": null
+      "kind": "runtime"
     },
     {
       "id": "X2",
       "text": "記録は、AIが「こういうのしてたのいつだっけ？」に答えるときの元ネタにする",
       "from_usecase": "全体",
-      "kind": null
+      "kind": "other"
     },
     {
       "id": "X3",
       "text": "同じ情報がPCからもスマホからも見える",
       "from_usecase": "UC2",
-      "kind": null
+      "kind": "runtime"
     },
     {
       "id": "X4",
       "text": "あまり使いやすくなくて構わない",
       "from_usecase": "UC2",
-      "kind": null
+      "kind": "quality"
     },
     {
       "id": "X5",
       "text": "自分一人で使う。ほかの人とは使わない",
       "from_usecase": "全体",
-      "kind": null
+      "kind": "runtime"
     },
     {
       "id": "X6",
       "text": "投稿は1日数件程度。見るのは主に24時間以内の投稿（「これって投稿してたっけ？」を解決するため）。遠い過去までスクロールする予定ではない",
       "from_usecase": "UC2",
-      "kind": null
+      "kind": "quality"
     }
   ],
   "runtime": {},

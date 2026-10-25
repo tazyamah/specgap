@@ -117,7 +117,7 @@ def render(led: dict) -> str:
             out += ["ルール:"] + [f"- {r}" for r in u["rules"]] + [""]
         if u.get("examples"):
             out += ["具体例:"] + [f"- 前提 {e['given']} ／ 操作 {e['when']} ／ 期待 {e['then']}" for e in u["examples"]] + [""]
-    out += ["## C2. 動作要件", "", "| ID | 聞くこと | 答え | 来歴 |", "|---|---|---|---|"]
+    out += ["## C2. 動かす環境（動作要件）", "", "| ID | 聞くこと | 答え | 来歴 |", "|---|---|---|---|"]
     for k, text in RUNTIME.items():
         r = led["runtime"].get(k, {})
         st = runtime_status(r)
