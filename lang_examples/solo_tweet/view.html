@@ -194,7 +194,7 @@ body { padding-bottom: 160px; }
 
   <section class="view" id="view-wf" hidden>
     <h2>画面の動きと、確認する操作</h2>
-    <p class="lead" style="margin-bottom:12px">画面は実際にさわれます。画面の下に浮いているコントローラーで操作を選び、[次へ]を押していくと、押す場所が光って画面が進みます。最後に OK か NG を付けてください（NGは理由も書けます）。</p>
+    <p class="lead" style="margin-bottom:12px">画面は実際にさわれます。画面の下に浮いているコントローラーで操作を選び、[次へ]を押していくと、押す場所が光って画面が進みます（押し間違えたら[前へ]）。最後に OK か NG を付けてください（NGは理由も書けます）。</p>
     <div class="devs" role="group" aria-label="端末">
       <button class="tab" data-dev="phone" aria-pressed="true">スマホ</button>
       <button class="tab" data-dev="pc" aria-pressed="false">PC</button>
@@ -243,6 +243,7 @@ body { padding-bottom: 160px; }
     <button id="bDev" aria-label="端末を切り替える">スマホ</button>
     <select id="opsel" aria-label="確認する操作"></select>
     <button id="bReset">最初から</button>
+    <button id="bPrev" hidden>前へ</button>
     <button id="bNext" class="go">次へ</button>
     <button id="bOk" class="okb" hidden>OK</button>
     <button id="bNg" class="ngb">NG</button>
@@ -441,7 +442,7 @@ body { padding-bottom: 160px; }
     var o = ops[cur];
     if (!o) { line.textContent = "操作を選んでください（" + DEVS[st.dev] + "）"; bNext.hidden = false; bOk.hidden = true; return; }
     line.innerHTML = finished ? "<b>結果</b>：" + o.res.hint + " <small>期待どおり？</small>" : "<b>" + (ptr + 1) + "/" + o.steps.length + "</b> " + o.steps[ptr].hint;
-    bNext.hidden = finished; bOk.hidden = !finished; ngrow.hidden = true;
+    bNext.hidden = finished; bOk.hidden = !finished; ngrow.hidden = true; $("bPrev").hidden = !(ptr > 0 || finished);
   }
   function start(i) {
     cur = i; ptr = 0; finished = false;
@@ -466,10 +467,18 @@ body { padding-bottom: 160px; }
     if (!nx) { var other = st.dev === "phone" ? "pc" : "phone"; if (firstTodo(other)) { setDev(other); nx = firstTodo(other); } }
     fillSel(); renderScen();
     if (nx) start(nx.id);
-    else { clearHl(); cur = -1; line.innerHTML = "<b>すべて確認しました。</b> <small>下のまとめを見てください</small>"; bNext.hidden = true; bOk.hidden = true; fillSel(); }
+    else { clearHl(); cur = -1; line.innerHTML = "<b>すべて確認しました。</b> <small>下のまとめを見てください</small>"; bNext.hidden = true; bOk.hidden = true; $("bPrev").hidden = true; fillSel(); }
   }
   sel.addEventListener("change", function () { start(parseInt(sel.value, 10)); });
   $("bReset").addEventListener("click", function () { if (cur < 0) { var t = firstTodo(st.dev) || mine(st.dev)[0]; start(t.id); } else start(cur); });
+  function prev() {
+    var o = ops[cur]; if (!o) return;
+    var p = finished ? o.steps.length - 1 : ptr - 1;
+    if (p < 0) return;
+    o.init(); for (var j = 0; j < p; j++) o.steps[j].act();
+    ptr = p; finished = false; hl(o.steps[ptr]); showLine();
+  }
+  $("bPrev").addEventListener("click", prev);
   bNext.addEventListener("click", function () { if (cur < 0) { var t = firstTodo(st.dev) || mine(st.dev)[0]; start(t.id); } else next(); });
   bOk.addEventListener("click", function () { mark("ok"); });
   bNg.addEventListener("click", function () { if (cur < 0) return; ngrow.hidden = false; ngwhy.focus(); });
