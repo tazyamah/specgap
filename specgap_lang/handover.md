@@ -14,13 +14,10 @@
 - rustgen.py: Rust 生成。shop.sgl から生成した crate が cargo build を通ることを確認済み
 - plan.py: ①（Markdown の表）を読み、③と静的に突合（compare_static）
 
-## 未了（この順で進める）
-1. examples.py: ①の具体例の表を読み、Rust の実行用 bin（src/bin/plan_examples.rs）を生成して cargo run し、結果・変化・外部作用を突合
-2. cli.py: check / spec / rust / compare コマンド（`python -m specgap_lang ...`）
-3. lang_examples/shop_plan.md: お店の例の plan 仕様書（①）。具体例 EX1〜、EX4 は未規定
-4. tests/test_lang.py: 正常系と、検査が止める例（丸め漏れ・行き先漏れ・冪等キー無し・宣言外の遷移・突合のずれ）
-5. specgap_lang/README.md と README への追記、生成した crate を lang_examples/shop_rust/ に置く
-6. PR を出す（本文の先頭に attribution、assignee と reviewer は tazyamah）
+## 状態
+上の未了の 1〜5 は完了（examples.py、cli.py、lang_examples/shop_plan.md、tests/test_lang.py、README、生成した crate）。
+残りは PR のレビューとマージ。次の候補: トリガ（決済結果の反映・期限切れ）、ソルバでの不変条件の検査、部品の実現の対応表、
+plan のドラフトを会話で作る SKILL、①の来歴（判断の番号）の扱い。
 
 ## 決めたこと・注意
 - 構文は仮。キーワードは日本語。文は1行1つ、ブロックは `{` で行を終え `}` だけの行で閉じる
