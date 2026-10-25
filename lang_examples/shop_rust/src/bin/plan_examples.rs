@@ -100,7 +100,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.注文.insert("N1".to_string(), 注文 { 注文ID: "N1".to_string(), 顧客: "C1".to_string(), 明細: BTreeMap::from([("A".to_string(), 2u8)]), 合計: 220i64, 状態: 注文状態::決済待ち });
+        保存.注文.insert("N1".to_string(), 注文 { 注文ID: "N1".to_string(), 顧客: "C1".to_string(), 明細: BTreeMap::from([("A".to_string(), 2u8)]), 合計: 220i64, 状態: 注文状態::決済要求済 });
         let ctx = 決済要求文脈 {  };
         let 入力 = 決済要求入力 { 注文ID: "N1".to_string() };
         match 入力.検査() {
@@ -145,7 +145,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.注文.insert("N1".to_string(), 注文 { 注文ID: "N1".to_string(), 顧客: "C1".to_string(), 明細: BTreeMap::from([("A".to_string(), 2u8)]), 合計: 220i64, 状態: 注文状態::決済待ち });
+        保存.注文.insert("N1".to_string(), 注文 { 注文ID: "N1".to_string(), 顧客: "C1".to_string(), 明細: BTreeMap::from([("A".to_string(), 2u8)]), 合計: 220i64, 状態: 注文状態::決済要求済 });
         let ctx = 決済結果の反映文脈 {  };
         let 入力 = 決済結果の反映入力 { 注文ID: "N1".to_string() };
         match 入力.検査() {
@@ -160,7 +160,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.注文.insert("N1".to_string(), 注文 { 注文ID: "N1".to_string(), 顧客: "C1".to_string(), 明細: BTreeMap::from([("A".to_string(), 2u8)]), 合計: 220i64, 状態: 注文状態::決済待ち });
+        保存.注文.insert("N1".to_string(), 注文 { 注文ID: "N1".to_string(), 顧客: "C1".to_string(), 明細: BTreeMap::from([("A".to_string(), 2u8)]), 合計: 220i64, 状態: 注文状態::決済要求済 });
         let ctx = 決済の期限切れ文脈 {  };
         let 入力 = 決済の期限切れ入力 { 注文ID: "N1".to_string() };
         match 入力.検査() {

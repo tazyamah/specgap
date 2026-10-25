@@ -463,6 +463,8 @@ class Parser:
             if kind == "応答":
                 key = self.name()
             elif kind == "期限":
+                if self.accept("現在"):  # 「現在 + 30 分」。現在は動的具体化の【参照】
+                    self.expect("+")
                 n = self.num()
                 unit = self.name()
                 if unit not in self.UNITS:

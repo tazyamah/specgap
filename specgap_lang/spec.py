@@ -9,8 +9,8 @@ def fmt_cause(kind: str, key: str) -> str:
     s = int(key)
     for unit, sec in (("日", 86400), ("時間", 3600), ("分", 60)):
         if s % sec == 0:
-            return f"{s // sec}{unit}"
-    return f"{s}秒"
+            return f"現在+{s // sec}{unit}"
+    return f"現在+{s}秒"
 
 
 def build(ck: Checker) -> dict:

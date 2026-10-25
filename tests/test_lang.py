@@ -49,7 +49,7 @@ def test_仕様書は読み書きと遷移をコードから取り出す():
     spec = build(chk(CODE))
     shop = {x["処理"]: x for x in spec["処理"]}
     assert shop["受注"]["書く"] == ["商品.在庫", "注文"]
-    assert ("注文", "受付", "決済待ち", "決済要求") in spec["遷移"]
+    assert ("注文", "受付", "決済要求済", "決済要求") in spec["遷移"]
     assert shop["決済要求"]["外部"] == ["決済.請求(冪等キー=注文ID)"]
 
 
@@ -76,7 +76,7 @@ def test_冪等キーが無いと止まる():
 
 
 def test_宣言に無い遷移は止まる():
-    ck = chk(mutate(CODE, "    注文.状態 = 決済待ち", "    注文.状態 = 完了"))
+    ck = chk(mutate(CODE, "    注文.状態 = 決済要求済", "    注文.状態 = 完了"))
     assert any("遷移" in d.code and "完了" in d.msg for d in ck.diags if d.level == ERROR)
 
 
@@ -186,11 +186,11 @@ def test_cli_compare(tmp_path):
 def test_トリガの要因が仕様書に出る():
     spec = build(chk(CODE))
     assert ("決済待ち", "応答 決済成功", "決済結果の反映") in spec["トリガ"]
-    assert ("決済待ち", "期限 30分", "決済の期限切れ") in spec["トリガ"]
+    assert ("決済待ち", "期限 現在+30分", "決済の期限切れ") in spec["トリガ"]
 
 
 def test_期限の無いトリガは止まる():
-    ck = chk(mutate(CODE, "  期限 30 分 → 決済の期限切れ\n", ""))
+    ck = chk(mutate(CODE, "  期限 現在 + 30 分 → 決済の期限切れ\n", ""))
     assert any("期限がありません" in m for m in msgs(ck, ERROR))
 
 
@@ -210,7 +210,7 @@ def test_トリガの引数と処理の入力が合わないと止まる():
 
 
 def test_計画にあるトリガの行き先がコードと違えば検出する():
-    plan = mutate(PLAN, "| 期限 30分 | 決済の期限切れ |", "| 期限 30分 | 決済結果の反映 |")
+    plan = mutate(PLAN, "| 期限 現在+30分 | 決済の期限切れ |", "| 期限 現在+30分 | 決済結果の反映 |")
     fs = compare_static(build(chk(CODE)), read_plan(plan))
     assert any(f.kind == DIFF and "トリガ" in f.where for f in fs)
 
@@ -222,8 +222,8 @@ def test_入力の範囲が項目より広いと止まる():
 
 def test_トリガの型の食い違いと期限の誤りは止まる():
     assert any("型" in m for m in msgs(chk(mutate(CODE, "トリガ 決済待ち(注文ID: ID)", "トリガ 決済待ち(注文ID: 整数)")), ERROR))
-    assert any("期限が複数" in m for m in msgs(chk(mutate(CODE, "  期限 30 分 → 決済の期限切れ", "  期限 30 分 → 決済の期限切れ\n  期限 1 時間 → 決済の期限切れ")), ERROR))
-    assert any("0より長く" in m for m in msgs(chk(mutate(CODE, "期限 30 分", "期限 0 分")), ERROR))
+    assert any("期限が複数" in m for m in msgs(chk(mutate(CODE, "  期限 現在 + 30 分 → 決済の期限切れ", "  期限 現在 + 30 分 → 決済の期限切れ\n  期限 現在 + 1 時間 → 決済の期限切れ")), ERROR))
+    assert any("0より長く" in m for m in msgs(chk(mutate(CODE, "期限 現在 + 30 分", "期限 現在 + 0 分")), ERROR))
 
 
 # ---- 初回の対話の台帳 ----
