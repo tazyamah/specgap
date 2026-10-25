@@ -28,7 +28,7 @@ h2 { font-size: 1.15rem; margin: 0 0 8px; }
 .lead { color: var(--muted); margin: 0 0 20px; }
 .tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .tab { font: inherit; padding: 8px 16px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 8px; cursor: pointer; }
-.tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tab.on, .tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 .tab:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 section.view { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
 .note { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 10px 14px; font-size: .9rem; margin: 12px 0 0; }
@@ -78,6 +78,27 @@ textarea { resize: none; height: 56px; }
 .bubble { padding: 8px 12px; border-radius: 12px; max-width: 88%; font-size: .92rem; }
 .bubble.me { background: var(--accent); color: #fff; justify-self: end; }
 .bubble.ai { background: var(--panel); border: 1px solid var(--line); }
+
+.phone.pc { max-width: 100%; border-radius: 12px; }
+.phone.pc .screen { height: 540px; }
+.cols { display: grid; grid-template-columns: 1.5fr 1fr; flex: 1; min-height: 0; }
+.cols > .scroll + .scroll { border-left: 1px solid var(--line); background: var(--panel); }
+.pane-title { font-size: .78rem; color: var(--muted); margin: 0 0 6px; }
+.stage.wide { grid-template-columns: 1fr; }
+.devs { display: flex; gap: 6px; margin-bottom: 10px; }
+.scen { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.scen h3 { font-size: .9rem; margin: 10px 0 2px; color: var(--accent); }
+.scen li.step { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--panel); font-size: .88rem; }
+.scen li.step.ng { border-color: var(--err); background: var(--err-soft); }
+.scen li.step.ok { border-color: var(--pend); }
+.scen .do b { display: block; }
+.scen .exp { color: var(--muted); }
+.scen .btns { display: flex; gap: 4px; align-items: start; flex-wrap: wrap; justify-content: end; }
+.scen .btns button { font: inherit; font-size: .8rem; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+.scen .btns button.sel-ok { background: var(--pend-soft); border-color: var(--pend); color: var(--pend); }
+.scen .btns button.sel-ng { background: var(--err-soft); border-color: var(--err); color: var(--err); }
+.summary { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: .88rem; background: var(--panel); }
+.summary button { font: inherit; font-size: .82rem; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; margin-top: 6px; }
 </style>
 
 <div class="wrap">
@@ -149,10 +170,14 @@ textarea { resize: none; height: 56px; }
   </section>
 
   <section class="view" id="view-wf" hidden>
-    <h2>画面の動き</h2>
-    <p class="lead" style="margin-bottom:12px">左の画面は実際にさわれます。右で「いまの状況」を切り替えると、同じ画面がどう変わるかを確認できます。レイアウトは私の案です。</p>
-    <div class="stage">
-      <div class="phone"><div class="screen" id="screen"></div></div>
+    <h2>画面の動きと、確認する操作</h2>
+    <p class="lead" style="margin-bottom:12px">画面は実際にさわれます。下の「確認する操作」は、ユースケースを実行する実際の操作の一覧です。「やってみる」で画面が動くので、結果が合っているかを「合っている／違う」で付けてください。</p>
+    <div class="devs" role="group" aria-label="端末">
+      <button class="tab" data-dev="phone" aria-pressed="true">スマホ</button>
+      <button class="tab" data-dev="pc" aria-pressed="false">PC</button>
+    </div>
+    <div class="stage" id="stage">
+      <div class="phone" id="frame"><div class="screen" id="screen"></div></div>
       <div class="ctrl">
         <fieldset><legend>いまの状況</legend>
           <div class="chips" id="modes">
@@ -166,8 +191,12 @@ textarea { resize: none; height: 56px; }
           <label><input type="checkbox" id="full"> 保存先がいっぱい（次の送信が失敗する）</label>
         </fieldset>
         <div class="explain" id="explain" aria-live="polite">ボタンや欄をさわると、ここに「いま何が起きたか」と根拠の判断番号が出ます。</div>
+        <p class="note" id="devnote" style="margin:0"></p>
       </div>
     </div>
+    <h2 style="margin-top:24px">確認する操作（ユースケースの実操作）</h2>
+    <ol class="scen" id="scen"></ol>
+    <div class="summary" id="summary" aria-live="polite"></div>
   </section>
 
   <section class="view" id="view-ai" hidden>
@@ -188,26 +217,28 @@ textarea { resize: none; height: 56px; }
 <script>
 (function () {
   var views = { uc: "view-uc", wf: "view-wf", ai: "view-ai" };
-  document.querySelectorAll(".tab").forEach(function (t) {
+  document.querySelectorAll(".tab[data-view]").forEach(function (t) {
     t.addEventListener("click", function () {
-      document.querySelectorAll(".tab").forEach(function (x) { x.setAttribute("aria-selected", x === t ? "true" : "false"); });
+      document.querySelectorAll(".tab[data-view]").forEach(function (x) { x.setAttribute("aria-selected", x === t ? "true" : "false"); });
       Object.keys(views).forEach(function (k) { document.getElementById(views[k]).hidden = (k !== t.dataset.view); });
     });
   });
 
   var DAY = 86400000, now = Date.now();
-  var posts = [
+  function seed() { return [
     { t: "駅前のカフェでコーヒー。静かで良かった", at: now - 25 * 60000, att: false },
     { t: "病院の予約 xxx を取った", at: now - 5 * 3600000, att: false },
     { t: "散歩の写真", at: now - 2 * DAY, att: true },
     { t: "xxx の件、本を図書館に返した", at: now - 12 * DAY, att: true },
     { t: "新しい靴を買った", at: now - 40 * DAY, att: false }
-  ];
-  var st = { page: "main", mode: "normal", text: "", att: false, link: false, error: null, pending: [], sres: null, q: { from: "", to: "", word: "" }, shown: 5 };
+  ]; }
+  var posts = seed();
+  var st = { dev: "phone", page: "main", mode: "normal", text: "", att: false, link: false, error: null, pending: [], sres: null, q: { from: "", to: "", word: "" }, shown: 5 };
   var scr = document.getElementById("screen"), ex = document.getElementById("explain"), full = document.getElementById("full");
+  var frame = document.getElementById("frame"), stage = document.getElementById("stage"), devnote = document.getElementById("devnote");
 
   function say(msg, j) { ex.innerHTML = msg + (j ? "<small>根拠: " + j + "</small>" : ""); }
-  function ago(ms) { var m = Math.round((now - ms) / 60000); if (m < 60) return m + "分前"; var h = Math.round(m / 60); if (h < 48) return h + "時間前"; return Math.round(h / 24) + "日前"; }
+  function ago(ms) { var m = Math.max(0, Math.round((now - ms) / 60000)); if (m < 60) return m + "分前"; var h = Math.round(m / 60); if (h < 48) return h + "時間前"; return Math.round(h / 24) + "日前"; }
   function esc(s) { return s.replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
   function postHtml(p) {
     return '<div class="post">' + (p.att ? '<span class="thumb" title="サムネイル"></span>' : "") + esc(p.t) +
@@ -220,33 +251,58 @@ textarea { resize: none; height: 56px; }
     return all;
   }
 
+  function mainPane() {
+    var h = "", empty = !st.text.trim() && !st.att && !st.link;
+    if (st.mode === "offline") h += '<div class="banner off">インターネットにつながっていません。書いた投稿は、つながったら自動で反映されます。</div>';
+    if (st.error) h += '<div class="banner err">記録できませんでした。原因: ' + st.error + "</div>";
+    h += '<div class="form"><textarea id="txt" placeholder="いまどうしてる？" aria-label="投稿の文字">' + esc(st.text) + '</textarea>' +
+      '<div class="row"><button data-act="att" class="' + (st.att ? "on" : "") + '">' + (st.att ? "✓ 画像を添付中" : "画像などを添付") + '</button><button data-act="link" class="' + (st.link ? "on" : "") + '">' + (st.link ? "✓ リンクあり" : "リンクを貼る") + '</button><span class="grow"></span>' +
+      '<button class="primary" data-act="send"' + (empty ? " disabled" : "") + ">送信</button></div></div>";
+    var list = visiblePosts();
+    if (st.mode === "loading") h += '<div class="empty"><span class="spin"></span>読み込み中</div>';
+    else if (!list.length) h += '<div class="empty">空です</div>';
+    else {
+      h += list.slice(0, st.shown).map(postHtml).join("");
+      if (st.mode === "offline" && posts.some(function (p) { return now - p.at > DAY; })) h += '<div class="meta" style="padding:8px 2px">つながっていないため、24時間より前の投稿は表示されません。</div>';
+      if (st.shown < list.length) h += '<div class="empty" data-act="more" style="padding:12px 0">下へ進むと続きが出ます…</div>';
+    }
+    return h;
+  }
+  function searchPane() {
+    var h = '<div class="form"><div class="row"><label class="grow meta">いつから（空でもよい）<input type="date" id="qf" value="' + st.q.from + '"></label><label class="grow meta">いつまで（空でもよい）<input type="date" id="qt" value="' + st.q.to + '"></label></div>' +
+      '<label class="meta">単語<input type="text" id="qw" placeholder="例: xxx" value="' + esc(st.q.word) + '"></label><button class="primary" data-act="search">探す</button></div>';
+    if (st.sres) h += st.sres.length ? st.sres.map(postHtml).join("") : '<div class="empty">1件もありませんでした</div>';
+    return h;
+  }
+
   function render() {
-    var h = '<div class="topbar"><button data-act="goMain" class="' + (st.page === "main" ? "on" : "") + '">書く・見る</button><button data-act="goSearch" class="' + (st.page === "search" ? "on" : "") + '">探す</button></div><div class="scroll" id="sc">';
-    if (st.page === "main") {
-      var empty = !st.text.trim() && !st.att && !st.link;
-      if (st.mode === "offline") h += '<div class="banner off">インターネットにつながっていません。書いた投稿は、つながったら自動で反映されます。</div>';
-      if (st.error) h += '<div class="banner err">記録できませんでした。原因: ' + st.error + "</div>";
-      h += '<div class="form"><textarea id="txt" placeholder="いまどうしてる？" aria-label="投稿の文字">' + esc(st.text) + '</textarea>' +
-        '<div class="row"><button data-act="att" class="' + (st.att ? "on" : "") + '">' + (st.att ? "✓ 画像を添付中" : "画像などを添付") + '</button><button data-act="link" class="' + (st.link ? "on" : "") + '">' + (st.link ? "✓ リンクあり" : "リンクを貼る") + '</button><span class="grow"></span>' +
-        '<button class="primary" data-act="send"' + (empty ? " disabled" : "") + ">送信</button></div></div>";
-      var list = visiblePosts();
-      if (st.mode === "loading") h += '<div class="empty"><span class="spin"></span>読み込み中</div>';
-      else if (!list.length) h += '<div class="empty">空です</div>';
-      else {
-        h += list.slice(0, st.shown).map(postHtml).join("");
-        if (st.mode === "offline" && posts.some(function (p) { return now - p.at > DAY; })) h += '<div class="meta" style="padding:8px 2px">つながっていないため、24時間より前の投稿は表示されません。</div>';
-        if (st.shown < list.length) h += '<div class="empty" data-act="more" style="padding:12px 0">下へ進むと続きが出ます…</div>';
-      }
-      h += '</div><button class="totop" data-act="top" aria-label="トップに戻る">↑ トップへ</button>';
+    var h;
+    if (st.dev === "pc") {
+      h = '<div class="cols"><div class="scroll" id="sc"><p class="pane-title">書く・見る</p>' + mainPane() + '</div><div class="scroll"><p class="pane-title">探す</p>' + searchPane() + "</div></div>" +
+        '<button class="totop" data-act="top" aria-label="トップに戻る">↑ トップへ</button>';
     } else {
-      h += '<div class="form"><div class="row"><label class="grow meta">いつから（空でもよい）<input type="date" id="qf" value="' + st.q.from + '"></label><label class="grow meta">いつまで（空でもよい）<input type="date" id="qt" value="' + st.q.to + '"></label></div>' +
-        '<label class="meta">単語<input type="text" id="qw" placeholder="例: xxx" value="' + esc(st.q.word) + '"></label><button class="primary" data-act="search">探す</button></div>';
-      if (st.sres) h += st.sres.length ? st.sres.map(postHtml).join("") : '<div class="empty">1件もありませんでした</div>';
-      h += "</div>";
+      h = '<div class="topbar"><button data-act="goMain" class="' + (st.page === "main" ? "on" : "") + '">書く・見る</button><button data-act="goSearch" class="' + (st.page === "search" ? "on" : "") + '">探す</button></div><div class="scroll" id="sc">' +
+        (st.page === "main" ? mainPane() : searchPane()) + "</div>" + (st.page === "main" ? '<button class="totop" data-act="top" aria-label="トップに戻る">↑ トップへ</button>' : "");
     }
     scr.innerHTML = h;
     var t = document.getElementById("txt");
     if (t) t.addEventListener("input", function () { st.text = t.value; var b = scr.querySelector('[data-act="send"]'); b.disabled = !st.text.trim() && !st.att && !st.link; if (b.disabled) say("何も入力されていないので、送信ボタンは押せません。", "J10"); });
+  }
+
+  function doSend() {
+    if (full.checked) { st.error = "保存先がいっぱいです。Dropboxの空き容量を増やすか、古い添付を消してください。"; render(); say("記録に失敗したので、投稿は増えず、エラーと原因を表示します。解決策の表示は今は求めていません。", "J11"); return; }
+    st.error = null;
+    var p = { t: st.text.trim() || (st.att ? "（画像のみの投稿）" : "（リンクのみの投稿）"), at: Date.now(), att: st.att, pending: st.mode === "offline" };
+    if (p.pending) st.pending.unshift(p); else posts.unshift(p);
+    st.text = ""; st.att = false; st.link = false; if (st.mode === "empty") st.mode = "normal"; syncModes(); render();
+    say(p.pending ? "圏外なので、端末に一時保存して一覧に出しました（「反映前」の印）。つながったら自動で記録されます。" : "投稿を記録しました。一覧の一番上に出ます。", p.pending ? "J28, J30" : "J8");
+  }
+  function doSearch() {
+    var g = function (id) { var e = document.getElementById(id); return e ? e.value : ""; };
+    st.q = { from: g("qf"), to: g("qt"), word: g("qw").trim() };
+    var f = st.q.from ? new Date(st.q.from).getTime() : null, to = st.q.to ? new Date(st.q.to).getTime() + DAY : null;
+    st.sres = posts.filter(function (p) { return (f === null || p.at >= f) && (to === null || p.at < to) && (!st.q.word || p.t.indexOf(st.q.word) >= 0); });
+    render(); say(st.sres.length ? "日付（片側だけでも可）と単語の両方に合う投稿を出します。" : "条件に合う投稿が1件もないので、「1件もありませんでした」と表示します。", st.sres.length ? "J23" : "J24");
   }
 
   scr.addEventListener("click", function (e) {
@@ -258,29 +314,84 @@ textarea { resize: none; height: 56px; }
     else if (act === "link") { st.link = !st.link; render(); say("文字・ファイル・リンクのどれか1つでもあれば送信できます（組み合わせは自由）。", "J8"); }
     else if (act === "top") { var s = document.getElementById("sc"); s.scrollTo({ top: 0, behavior: "smooth" }); say("一覧の先頭に戻ります。", "J17"); }
     else if (act === "more") { st.shown += 5; render(); say("下へ進むと続きが出ます。", "J17"); }
-    else if (act === "send") {
-      if (full.checked) { st.error = "保存先がいっぱいです。Dropboxの空き容量を増やすか、古い添付を消してください。"; render(); say("記録に失敗したので、投稿は増えず、エラーと原因を表示します。解決策の表示は今は求めていません。", "J11"); return; }
-      st.error = null;
-      var p = { t: st.text.trim() || (st.att ? "（画像のみの投稿）" : "（リンクのみの投稿）"), at: Date.now(), att: st.att, pending: st.mode === "offline" };
-      if (p.pending) st.pending.unshift(p); else posts.unshift(p);
-      st.text = ""; st.att = false; st.link = false; st.mode = st.mode === "empty" ? "normal" : st.mode; syncModes(); render();
-      say(p.pending ? "圏外なので、端末に一時保存して一覧に出しました（「反映前」の印）。つながったら自動で記録されます。" : "投稿を記録しました。一覧の一番上に出ます。", p.pending ? "J28, J30" : "J8");
-    }
-    else if (act === "search") {
-      st.q = { from: document.getElementById("qf").value, to: document.getElementById("qt").value, word: document.getElementById("qw").value.trim() };
-      var f = st.q.from ? new Date(st.q.from).getTime() : null, to = st.q.to ? new Date(st.q.to).getTime() + DAY : null;
-      st.sres = posts.filter(function (p) { return (f === null || p.at >= f) && (to === null || p.at < to) && (!st.q.word || p.t.indexOf(st.q.word) >= 0); });
-      render(); say(st.sres.length ? "日付（片側だけでも可）と単語の両方に合う投稿を出します。" : "条件に合う投稿が1件もないので、「1件もありませんでした」と表示します。", st.sres.length ? "J23" : "J24");
-    }
+    else if (act === "send") doSend();
+    else if (act === "search") doSearch();
   });
 
   function syncModes() { document.querySelectorAll("#modes button").forEach(function (b) { b.classList.toggle("on", b.dataset.mode === st.mode); }); }
-  document.getElementById("modes").addEventListener("click", function (e) {
-    var b = e.target.closest("button"); if (!b) return;
-    st.mode = b.dataset.mode; st.error = null; syncModes(); render();
-    say({ normal: "ふつうの状態です。サンプルの投稿が新しい順に並びます。", empty: "投稿が1件もないので「空です」と表示します。", loading: "投稿はあるが読み込み中なので、「読み込み中」と表示します。", offline: "圏外です。直近24時間ぶんだけ見られ、書いた投稿は「反映前」の印付きで出ます。" }[st.mode],
-      { normal: "J14, J15", empty: "J25", loading: "J25", offline: "J28, J29, J30" }[st.mode]);
+  function setMode(m) {
+    st.mode = m; st.error = null; syncModes(); render();
+    say({ normal: "ふつうの状態です。サンプルの投稿が新しい順に並びます。", empty: "投稿が1件もないので「空です」と表示します。", loading: "投稿はあるが読み込み中なので、「読み込み中」と表示します。", offline: "圏外です。直近24時間ぶんだけ見られ、書いた投稿は「反映前」の印付きで出ます。" }[m],
+      { normal: "J14, J15", empty: "J25", loading: "J25", offline: "J28, J29, J30" }[m]);
+  }
+  document.getElementById("modes").addEventListener("click", function (e) { var b = e.target.closest("button"); if (b) setMode(b.dataset.mode); });
+
+  // 端末の切り替え
+  function setDev(d) {
+    st.dev = d; frame.classList.toggle("pc", d === "pc"); stage.classList.toggle("wide", d === "pc");
+    document.querySelectorAll("[data-dev]").forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.dev === d ? "true" : "false"); b.classList.toggle("on", b.dataset.dev === d); });
+    devnote.textContent = d === "pc" ? "PC（AI案）：画面が広いので、左に「書く・見る」、右に「探す」を同時に出します。スマホと同じ情報が同じ並びで見えます。" : "スマホ（AI案）：画面が狭いので、上のボタンで「書く・見る」と「探す」を切り替えます。";
+    render();
+    say(d === "pc" ? "PC表示にしました。探すが右側に常に見えます。" : "スマホ表示にしました。探すは別画面です。", "J16, J33（見た目はAI案）");
+  }
+  document.querySelectorAll("[data-dev]").forEach(function (b) { b.addEventListener("click", function () { setDev(b.dataset.dev); }); });
+
+  // 確認する操作
+  function reset(mode) { posts = seed(); st.pending = []; st.text = ""; st.att = false; st.link = false; st.error = null; st.sres = null; st.q = { from: "", to: "", word: "" }; st.shown = 5; st.page = "main"; full.checked = false; st.mode = mode || "normal"; syncModes(); }
+  function typed(v, att) { st.text = v; st.att = !!att; }
+  var scen = [
+    { uc: "UC1 書く", steps: [
+      { do: "何も入れずに、送信ボタンを見る", exp: "送信ボタンが押せない", run: function () { reset(); render(); say("何も入力されていないので、送信ボタンは押せません。", "J10"); } },
+      { do: "文字を入れて「送信」を押す", exp: "一覧の一番上に出て、欄が空になる", run: function () { reset(); typed("今日は図書館で本を借りた"); render(); doSend(); } },
+      { do: "画像を添付して「送信」を押す", exp: "サムネイル付きの投稿が一番上に出る", run: function () { reset(); typed("夕焼けの写真", true); render(); doSend(); } },
+      { do: "保存先がいっぱいの状態で「送信」を押す", exp: "投稿は増えず、エラーと原因が出る", run: function () { reset(); full.checked = true; typed("保存できないはず"); render(); doSend(); } },
+      { do: "圏外で書いて「送信」を押す", exp: "エラーにならず、「反映前」の印付きで一番上に出る", run: function () { reset("offline"); typed("電車の中で書いた"); render(); doSend(); } }
+    ] },
+    { uc: "UC2 見る", steps: [
+      { do: "アプリを開く", exp: "上が投稿フォーム、その下に新しい順の一覧", run: function () { reset(); render(); say("上に投稿フォーム、その下に新しい順の一覧が出ます。", "J14, J15"); } },
+      { do: "投稿が1件もない状態で開く", exp: "「空です」と出る", run: function () { reset(); setMode("empty"); } },
+      { do: "読み込み中に開く", exp: "「読み込み中」と出る", run: function () { reset(); setMode("loading"); } },
+      { do: "一覧を下へ進み、「トップへ」を押す", exp: "続きが出て、押すと先頭に戻る", run: function () { reset(); render(); var s = document.getElementById("sc"); s.scrollTo({ top: s.scrollHeight, behavior: "smooth" }); say("下へ進むと続きが出ます。右下の「トップへ」で先頭に戻ります。", "J17"); } },
+      { do: "圏外で開く", exp: "24時間より前の投稿は出ない", run: function () { reset(); setMode("offline"); } }
+    ] },
+    { uc: "UC4 探す", steps: [
+      { do: "単語「xxx」だけで探す", exp: "xxxを含む2件が出る", run: function () { reset(); st.q.word = "xxx"; if (st.dev === "phone") st.page = "search"; render(); doSearch(); } },
+      { do: "「いつから」だけを2週間前にして探す（終わりは空）", exp: "2週間前から今までの投稿が出る", run: function () { reset(); var d = new Date(now - 14 * DAY); st.q.from = d.toISOString().slice(0, 10); if (st.dev === "phone") st.page = "search"; render(); doSearch(); } },
+      { do: "「いつまで」だけを1か月前にして、単語「xxx」で探す", exp: "条件に合うものが1件もなく、「1件もありませんでした」と出る", run: function () { reset(); var d = new Date(now - 30 * DAY); st.q.to = d.toISOString().slice(0, 10); st.q.word = "xxx"; if (st.dev === "phone") st.page = "search"; render(); doSearch(); } }
+    ] },
+    { uc: "UC3 AIに見てもらう", steps: [
+      { do: "AIにDropboxの場所を1回だけ教え、あとは質問する", exp: "AIが全部の投稿と添付を見て答える（上の「AIに見てもらう」タブ）", run: function () { document.getElementById("t-ai").click(); } }
+    ] }
+  ];
+  var marks = {};
+  var scenEl = document.getElementById("scen"), sum = document.getElementById("summary");
+  function renderScen() {
+    var h = "", n = 0;
+    scen.forEach(function (g) {
+      h += "<h3>" + g.uc + "</h3>";
+      g.steps.forEach(function (s) {
+        n++; var id = "s" + n, m = marks[id] || "";
+        h += '<li class="step ' + (m === "ok" ? "ok" : m === "ng" ? "ng" : "") + '"><div class="do"><b>' + n + ". " + s.do + '</b><span class="exp">→ ' + s.exp + '</span></div><div class="btns"><button data-run="' + id + '">やってみる</button><button data-mark="' + id + ':ok" class="' + (m === "ok" ? "sel-ok" : "") + '">合っている</button><button data-mark="' + id + ':ng" class="' + (m === "ng" ? "sel-ng" : "") + '">違う</button></div></li>';
+        s.id = id; s.no = n;
+      });
+    });
+    scenEl.innerHTML = h;
+    var all = [], ok = 0, ng = [];
+    scen.forEach(function (g) { g.steps.forEach(function (s) { all.push(s); if (marks[s.id] === "ok") ok++; if (marks[s.id] === "ng") ng.push(s); }); });
+    sum.innerHTML = "確認済み " + (ok + ng.length) + " / " + all.length + "（合っている " + ok + "、違う " + ng.length + "）" +
+      (ng.length ? "<br>違うと付けた操作: " + ng.map(function (s) { return "操作" + s.no + "「" + s.do + "」"; }).join("、") + '<br><button id="cp">違う点をコピー</button>' : "");
+    var cp = document.getElementById("cp");
+    if (cp) cp.addEventListener("click", function () {
+      var txt = "違うと付けた操作: " + ng.map(function (s) { return "操作" + s.no + "「" + s.do + "」"; }).join("、");
+      try { navigator.clipboard.writeText(txt).then(function () { cp.textContent = "コピーしました"; }, function () { cp.textContent = "コピーできませんでした。上の文を選んでコピーしてください"; }); } catch (e) { cp.textContent = "上の文を選んでコピーしてください"; }
+    });
+  }
+  scenEl.addEventListener("click", function (e) {
+    var r = e.target.closest("[data-run]"), m = e.target.closest("[data-mark]");
+    if (r) { scen.forEach(function (g) { g.steps.forEach(function (s) { if (s.id === r.dataset.run) { var f = document.getElementById("frame"); s.run(); if (f && !document.getElementById("view-wf").hidden && s.uc !== "UC3") f.scrollIntoView({ block: "nearest", behavior: "smooth" }); } }); }); }
+    if (m) { var p = m.dataset.mark.split(":"); marks[p[0]] = marks[p[0]] === p[1] ? "" : p[1]; renderScen(); }
   });
-  render();
+
+  setDev("phone"); renderScen();
 })();
 </script>
