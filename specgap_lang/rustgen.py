@@ -51,7 +51,13 @@ pub fn 写像表示<V: Display>(m: &BTreeMap<String, V>) -> String {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum 行き先 {
     処理(&'static str),
+    待つ(&'static str),
     応答,
+}
+pub struct トリガ定義 {
+    pub 名前: &'static str,
+    /// (種別, 要因, 行き先の処理)。期限の要因は秒数。先に起きた要因が勝つ（実行は基盤）。
+    pub 要因: &'static [(&'static str, &'static str, &'static str)],
 }
 '''
 
@@ -110,6 +116,7 @@ class Gen:
         for proc in self.p.processes:
             ProcGen(self, proc).emit()
         self.flows()
+        self.triggers()
         return "\n".join(self.out) + "\n"
 
     def states(self):
@@ -224,8 +231,18 @@ class Gen:
                 for v, ts in rdef.variants:
                     pat = f"{rdef.name}::{v}" + ("(..)" if ts else "")
                     dest = m[v]
-                    self.w(f"        {pat} => " + ("行き先::応答," if dest == "応答" else f'行き先::処理("{dest}"),'))
+                    self.w(f"        {pat} => " + ("行き先::応答," if dest == "応答" else f'行き先::待つ("{dest[3:]}"),' if dest.startswith("待つ ") else f'行き先::処理("{dest}"),'))
                 self.w("    }\n}\n")
+
+    def triggers(self):
+        if not self.p.triggers:
+            return
+        self.w("// 【トリガ】：待ちの宣言。要因ごとの行き先。作成・発火・期限の監視は基盤の仕事。")
+        self.w("pub const トリガ一覧: &[トリガ定義] = &[")
+        for tg in self.p.triggers:
+            cs = ", ".join(f'("{k}", "{key}", "{d}")' for k, key, d in tg.causes)
+            self.w(f'    トリガ定義 {{ 名前: "{tg.name}", 要因: &[{cs}] }},')
+        self.w("];\n")
 
 
 class ProcGen:

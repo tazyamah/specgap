@@ -98,6 +98,8 @@ class Parser:
                 p.processes.append(self.process(line))
             elif kw == "フロー":
                 p.flows.append(self.flow(line))
+            elif kw == "トリガ":
+                p.triggers.append(self.trigger(line))
             else:
                 raise ParseError(f"未知の定義「{kw}」です", line)
             self.skip_nl()
@@ -445,6 +447,33 @@ class Parser:
             entries.append((proc, routes))
             self.end_line()
         return Flow(name, entries, line)
+
+    # ---- トリガ ----
+    UNITS = {"秒": 1, "分": 60, "時間": 3600, "日": 86400}
+
+    def trigger(self, line) -> Trigger:
+        name = self.name()
+        self.expect("(")
+        params = self.comma_list(lambda: (self.name(), (self.expect(":"), self.type())[1]))
+        self.expect(")")
+        self.block_open()
+        causes = []
+        while not self.accept("}"):
+            kind = self.name()
+            if kind == "応答":
+                key = self.name()
+            elif kind == "期限":
+                n = self.num()
+                unit = self.name()
+                if unit not in self.UNITS:
+                    raise self.err(f"時間の単位「{unit}」は使えません（秒・分・時間・日）")
+                key = str(n * self.UNITS[unit])
+            else:
+                raise self.err(f"トリガの要因は「応答」か「期限」です（「{kind}」は使えません）")
+            self.expect("→")
+            causes.append((kind, key, self.name()))
+            self.end_line()
+        return Trigger(name, params, causes, line)
 
 
 def parse(src: str) -> Program:

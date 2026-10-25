@@ -3,6 +3,16 @@ from .ast import *  # noqa: F401,F403
 from .check import Checker, phys, tok_of
 
 
+def fmt_cause(kind: str, key: str) -> str:
+    if kind != "期限":
+        return key
+    s = int(key)
+    for unit, sec in (("日", 86400), ("時間", 3600), ("分", 60)):
+        if s % sec == 0:
+            return f"{s // sec}{unit}"
+    return f"{s}秒"
+
+
 def build(ck: Checker) -> dict:
     p = ck.p
     spec: dict = {}
@@ -50,6 +60,7 @@ def build(ck: Checker) -> dict:
             "丸め": sorted(set(info.roundings)),
         })
     spec["処理"] = procs
+    spec["トリガ"] = [(tg.name, f"{k} {fmt_cause(k, key)}", d) for tg in p.triggers for k, key, d in tg.causes]
     spec["不変条件"] = [text for text, _ in ck.invariant_status]
     spec["指定"] = [(f"{x['処理']}.丸め", f"{m}({u})") for x in procs for m, u in x["丸め"]]
     spec["実現"] = [(f"{d.name}.{f.name}", phys(f.type)) for d in p.data for f in d.fields if f.type.kind in ("整数", "金額")]
@@ -70,6 +81,8 @@ def render(ck: Checker, spec: dict, name="") -> str:
     for x in spec["処理"]:
         rs = " / ".join(f"{v}→{d}" for v, d in x["結果"])
         out.append(f"| {x['処理']} | {', '.join(x['入力'])} | {', '.join(x['読む'])} | {', '.join(x['書く'])} | {rs} | {', '.join(x['外部']) or 'なし'} |")
+    out += ["", "## トリガ", "", "| トリガ | ◆要因 | ◆行き先 |", "|---|---|---|"]
+    out += [f"| {a} | {b} | {c} |" for a, b, c in spec["トリガ"]]
     out += ["", "## 不変条件", "", "| ◆内容 | 検査の結果 |", "|---|---|"]
     for text, rows in ck.invariant_status:
         out.append(f"| {text} | " + "／".join(f"{p}: {s}" for p, s in rows) + " |")

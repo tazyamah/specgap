@@ -80,6 +80,15 @@ class Flow:
 
 
 @dataclass
+class Trigger:
+    """待ちの宣言。要因（応答／期限）ごとに行き先の処理を持つ。先に起きた要因が勝つ。"""
+    name: str
+    params: list[tuple[str, Type]]
+    causes: list[tuple[str, str, str]]  # (種別 応答／期限, 要因 応答名／秒数, 行き先の処理)
+    line: int = 0
+
+
+@dataclass
 class Process:
     name: str
     inputs: list[tuple[str, Type]] = field(default_factory=list)
@@ -103,6 +112,7 @@ class Program:
     invariants: list[Invariant] = field(default_factory=list)
     processes: list[Process] = field(default_factory=list)
     flows: list[Flow] = field(default_factory=list)
+    triggers: list[Trigger] = field(default_factory=list)
 
 
 # ---- 式 ----

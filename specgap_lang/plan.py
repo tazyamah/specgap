@@ -66,7 +66,7 @@ def classify(headers: list[str]) -> str | None:
     for kind, need in (
         ("データ", {"項目", "型・範囲"}), ("状態", {"状態", "区分"}), ("遷移", {"元", "先", "起こす処理"}),
         ("拒否", {"元", "先", "拒否の理由"}), ("処理", {"入力", "読む", "書く"}), ("不変条件", {"内容"}),
-        ("指定", {"項目", "指定"}), ("具体例", {"期待する結果"}),
+        ("トリガ", {"トリガ", "要因", "行き先"}), ("指定", {"項目", "指定"}), ("具体例", {"期待する結果"}),
     ):
         if need <= h:
             return kind
@@ -137,6 +137,10 @@ def compare_static(spec: dict, plan: dict) -> list[Finding]:
                       "結果→行き先": items(",".join(f"{v}→{d}" for v, d in x["結果"])),
                       "外部作用": items(",".join(x["外部"]))} for x in spec["処理"]}
     cmp_map("処理", a, b, out, str)
+    # トリガ（要因ごとの行き先）
+    a = {(r["トリガ"], n(r["要因"])): {"行き先": n(r["行き先"])} for r in sect("トリガ")}
+    b = {(t, n(c)): {"行き先": n(d)} for t, c, d in spec["トリガ"]}
+    cmp_map("トリガ", a, b, out, lambda k: f"{k[0]}: {k[1]}")
     # 不変条件（内容の文字列で突合）
     a = {n(r["内容"]): {} for r in sect("不変条件")}
     b = {n(t): {} for t in spec["不変条件"]}

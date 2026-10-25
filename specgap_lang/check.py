@@ -93,6 +93,7 @@ class Checker:
         self.results = {r.name: r for r in prog.results}
         self.effects = {e.name: e for e in prog.effects}
         self.procs = {x.name: x for x in prog.processes}
+        self.triggers = {x.name: x for x in prog.triggers}
         self.variants = {}
         for s in prog.states:
             for v in [s.initial, *s.middle, *s.final]:
@@ -116,6 +117,7 @@ class Checker:
         for proc in self.p.processes:
             self.infos[proc.name] = ProcChecker(self, proc).run()
         self.check_flows()
+        self.check_triggers()
         self.check_states()
         self.check_invariants()
         order = {ERROR: 0, QUESTION: 1, WARN: 2}
@@ -168,12 +170,46 @@ class Checker:
                 for v, dest in routes:
                     base = dest.split(" ", 1)[1] if dest.startswith("待つ ") else dest
                     if dest.startswith("待つ "):
-                        self.d(ERROR, "行き先", where, "トリガは試作の範囲外です（待つ は使えません）")
+                        self.check_wait(where, proc, base)
                     elif base != "応答" and base not in self.procs:
                         self.d(ERROR, "行き先", where, f"結果「{v}」の行き先「{base}」が未定義の処理です")
         for name in self.procs:
             if name not in in_flow:
                 self.d(WARN, "行き先", f"処理 {name}", "どのフローにも入っていません")
+
+    def check_wait(self, where, proc, trig):
+        tg = self.triggers.get(trig)
+        if tg is None:
+            self.d(ERROR, "トリガ", where, f"待つ 先のトリガ「{trig}」が未定義です")
+            return
+        have = {n for n, _ in self.procs[proc].inputs}
+        for n, _ in tg.params:
+            if n not in have:
+                self.d(ERROR, "トリガ", where, f"トリガ {trig} の引数「{n}」を、処理 {proc} は入力にもっていません")
+
+    def check_triggers(self):
+        waited = set()
+        for fl in self.p.flows:
+            for _, routes in fl.entries:
+                waited |= {d.split(" ", 1)[1] for _, d in routes if d.startswith("待つ ")}
+        for tg in self.p.triggers:
+            where = f"トリガ {tg.name}"
+            if not any(k == "期限" for k, _, _ in tg.causes):
+                self.d(ERROR, "トリガ", where, "期限がありません（待ち続けないよう、期限と期限切れの行き先が必要です）")
+            if not any(k == "応答" for k, _, _ in tg.causes):
+                self.d(WARN, "トリガ", where, "解く応答がありません（期限切れでしか終わらない待ちです）")
+            seen = set()
+            for k, key, dest in tg.causes:
+                if (k, key) in seen:
+                    self.d(ERROR, "トリガ", where, f"要因「{k} {key}」が重複しています")
+                seen.add((k, key))
+                proc = self.procs.get(dest)
+                if proc is None:
+                    self.d(ERROR, "トリガ", where, f"要因「{k} {key}」の行き先「{dest}」が未定義の処理です")
+                elif [n for n, _ in proc.inputs] != [n for n, _ in tg.params]:
+                    self.d(ERROR, "トリガ", where, f"行き先の処理 {dest} の入力が、トリガの引数と合いません")
+            if tg.name not in waited:
+                self.d(WARN, "トリガ", where, "どのフローからも「待つ」で作られていません")
 
     def check_states(self):
         for s in self.p.states:

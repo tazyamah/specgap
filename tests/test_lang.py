@@ -133,9 +133,9 @@ def test_お店の例は計画と静的に一致する():
 
 
 def test_計画にある遷移がコードに無いと検出する():
-    plan = mutate(PLAN, "| TR2 |", "| TR3 | 注文 | 決済待ち | 完了 | 決済結果の反映 | 仮 |\n| TR2 |")
+    plan = mutate(PLAN, "| TR2 |", "| TR9 | 注文 | 受付 | 完了 | 即時完了 | 仮 |\n| TR2 |")
     fs = static(plan)
-    assert any(f.kind == A_ONLY and "決済待ち→完了" in f.where for f in fs)
+    assert any(f.kind == A_ONLY and "受付→完了" in f.where for f in fs)
 
 
 def test_コードが計画に無いものを書き込むと検出する():
@@ -180,3 +180,36 @@ def test_cli_compare(tmp_path):
     r = subprocess.run([sys.executable, "-m", "specgap_lang", "compare", str(EX / "shop.sgl"), str(EX / "shop_plan.md"), "--no-run"],
                        capture_output=True, text=True, cwd=ROOT)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# ---- トリガ ----
+def test_トリガの要因が仕様書に出る():
+    spec = build(chk(CODE))
+    assert ("決済待ち", "応答 決済成功", "決済結果の反映") in spec["トリガ"]
+    assert ("決済待ち", "期限 30分", "決済の期限切れ") in spec["トリガ"]
+
+
+def test_期限の無いトリガは止まる():
+    ck = chk(mutate(CODE, "  期限 30 分 → 決済の期限切れ\n", ""))
+    assert any("期限がありません" in m for m in msgs(ck, ERROR))
+
+
+def test_待つ先のトリガが未定義だと止まる():
+    ck = chk(mutate(CODE, "要求済 → 待つ 決済待ち", "要求済 → 待つ 承認待ち"))
+    assert any("承認待ち" in m for m in msgs(ck, ERROR))
+
+
+def test_トリガの行き先が未定義の処理だと止まる():
+    ck = chk(mutate(CODE, "→ 決済の期限切れ\n}", "→ 期限切れ処理\n}"))
+    assert any("期限切れ処理" in m for m in msgs(ck, ERROR))
+
+
+def test_トリガの引数と処理の入力が合わないと止まる():
+    ck = chk(mutate(CODE, "トリガ 決済待ち(注文ID: ID)", "トリガ 決済待ち(注文: ID)"))
+    assert any("合いません" in m or "入力にもっていません" in m for m in msgs(ck, ERROR))
+
+
+def test_計画にあるトリガの行き先がコードと違えば検出する():
+    plan = mutate(PLAN, "| 期限 30分 | 決済の期限切れ |", "| 期限 30分 | 決済結果の反映 |")
+    fs = compare_static(build(chk(CODE)), read_plan(plan))
+    assert any(f.kind == DIFF and "トリガ" in f.where for f in fs)
