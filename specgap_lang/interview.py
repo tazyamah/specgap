@@ -25,6 +25,13 @@ RUNTIME = {
     "R7": "画面の有無と種類",
 }
 LEVELS = ("要約", "利用者目標", "下位機能")
+STATUSES = ("open", "unspec", "answered")  # 未解決／意図的に未規定／答え済み
+KINDS = ("runtime", "constraint", "quality", "other")
+
+
+def runtime_status(r: dict) -> str:
+    """動作要件の状態。status が無く value だけあれば答え済み（古い書き方）。"""
+    return r.get("status") or ("answered" if r.get("value") else "open")
 
 
 def new_ledger(title: str) -> dict:
@@ -68,25 +75,39 @@ def status(led: dict) -> tuple[list[str], bool]:
     for u in led["usecases"]:
         for g in usecase_gaps(u):
             todo.append(f"{u['id']} {u.get('goal', '')}: {g}")
-    for q in open_questions(led):
-        todo.append(f"未解決の問い {q['id']}: {q['text']}")
-    unsorted = [x for x in led["extras"] if x.get("kind") is None]
-    for x in unsorted:
-        todo.append(f"付加情報 {x['id']} の仕分け: {x['text']}")
-    ready_uc = bool(led["usecases"]) and not any(t for t in todo if not t.startswith("付加情報"))
-    if ready_uc:
+    for q in led["questions"]:
+        st = q.get("status", "open")
+        if st not in STATUSES:
+            todo.append(f"問い {q['id']} の status「{st}」が不正です（{'／'.join(STATUSES)}）")
+        elif st == "open":
+            todo.append(f"未解決の問い {q['id']}: {q['text']}")
+        elif not q.get("answer"):
+            todo.append(f"問い {q['id']}: {st} なのに答え（未規定なら理由）が空です")
+    for x in led["extras"]:
+        if x.get("kind") is None:
+            todo.append(f"付加情報 {x['id']} の仕分け（人に確かめる）: {x['text']}")
+        elif x["kind"] not in KINDS:
+            todo.append(f"付加情報 {x['id']} の kind「{x['kind']}」が不正です（{'／'.join(KINDS)}）")
+    if led["usecases"] and not todo:
         for k, text in RUNTIME.items():
-            if not led["runtime"].get(k, {}).get("value"):
+            r = led["runtime"].get(k, {})
+            st = runtime_status(r)
+            if st not in STATUSES:
+                todo.append(f"動作要件 {k} の status「{st}」が不正です")
+            elif st == "open":
                 todo.append(f"動作要件 {k}: {text}")
-    ready = ready_uc and all(led["runtime"].get(k, {}).get("value") for k in RUNTIME)
-    return todo, ready
+            elif k == "R1" and st == "unspec":
+                todo.append("動作要件 R1（動作プラットフォーム）は未規定にできません。確定させてください")
+            elif st == "answered" and not r.get("value"):
+                todo.append(f"動作要件 {k}: answered なのに値が空です")
+    return todo, bool(led["usecases"]) and not todo
 
 
 def render(led: dict) -> str:
-    out = [f"# 仕様書（plan）：{led['title']}", "", "会話で作ったレビュー対象の仕様書（①）の会話の部分。台帳から生成した。決まっていないことは「**未規定**」と書く。", ""]
-    out += ["## 0. 概要（文章。突合しない）", "", led["summary"] or "**未規定**", ""]
+    out = [f"# 仕様書（plan）：{led['title']}", "", "会話で作ったレビュー対象の仕様書（①）の会話の部分（節番号 C0〜C5）。plan 雛形の節1〜7（データ・状態・処理・指定・具体例の表）は、この内容から、コードより前に会話で書き起こす。台帳から生成した。決まっていないことは「**未規定**」と書く。", ""]
+    out += ["## C0. 概要（文章。突合しない）", "", led["summary"] or "**未規定**", ""]
     out += ["範囲外: " + ("、".join(led["out_of_scope"]) or "**未規定**"), ""]
-    out += ["## 1. ユースケース（Cockburn。文章。コードの起こしの元）", ""]
+    out += ["## C1. ユースケース（Cockburn。文章。コードの起こしの元）", ""]
     for u in led["usecases"]:
         out += [f"### {u['id']} {u.get('goal', '')}（アクター: {u.get('actor', '')}／粒度: {u.get('level') or '**未規定**'}）", ""]
         out += ["主な流れ:"] + [f"{i}. {s}" for i, s in enumerate(u.get("main", []), 1)] + [""]
@@ -96,17 +117,19 @@ def render(led: dict) -> str:
             out += ["ルール:"] + [f"- {r}" for r in u["rules"]] + [""]
         if u.get("examples"):
             out += ["具体例:"] + [f"- 前提 {e['given']} ／ 操作 {e['when']} ／ 期待 {e['then']}" for e in u["examples"]] + [""]
-    out += ["## 2. 動作要件", "", "| ID | 聞くこと | 答え | 来歴 |", "|---|---|---|---|"]
+    out += ["## C2. 動作要件", "", "| ID | 聞くこと | 答え | 来歴 |", "|---|---|---|---|"]
     for k, text in RUNTIME.items():
         r = led["runtime"].get(k, {})
-        out.append(f"| {k} | {text} | {r.get('value') or '**未規定**（まだ聞いていない）'} | {r.get('from', '')} |")
+        st = runtime_status(r)
+        shown = r.get("value") or ("**未規定**（意図的）" if st == "unspec" else "（まだ聞いていない）")
+        out.append(f"| {k} | {text} | {shown} | {r.get('from', '')} |")
     out += [""]
     if led["extras"]:
-        out += ["## 3. 返答に混ざっていた付加情報（仕分け済みの置き場）", "", "| ID | 内容 | 出どころ | 種別 |", "|---|---|---|---|"]
+        out += ["## C3. 返答に混ざっていた付加情報（仕分け済みの置き場）", "", "| ID | 内容 | 出どころ | 種別 |", "|---|---|---|---|"]
         out += [f"| {x['id']} | {x['text']} | {x.get('from_usecase', '')} | {x.get('kind') or '未仕分け'} |" for x in led["extras"]]
         out += [""]
-    out += ["## 4. 未解決の問い", "", "| ID | 問い | 状態 | 答え |", "|---|---|---|---|"]
+    out += ["## C4. 未解決の問い", "", "| ID | 問い | 状態 | 答え |", "|---|---|---|---|"]
     out += [f"| {q['id']} | {q['text']} | {q.get('status', 'open')} | {q.get('answer', '')} |" for q in led["questions"]] or []
-    out += ["", "## 5. 判断の記録", "", "| ID | 問い | 答え | 誰が | いつ |", "|---|---|---|---|---|"]
+    out += ["", "## C5. 判断の記録", "", "| ID | 問い | 答え | 誰が | いつ |", "|---|---|---|---|---|"]
     out += [f"| {j['id']} | {j['question']} | {j['answer']} | {j.get('who', '')} | {j.get('when', '')} |" for j in led["judgments"]]
     return "\n".join(out) + "\n"

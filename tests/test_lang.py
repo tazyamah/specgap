@@ -253,7 +253,26 @@ def test_未解決の問いと未仕分けの付加情報は開始を止める()
     assert not iv.status(led)[1]
     led["questions"][0]["status"] = "unspec"
     led["extras"].append({"id": "X1", "text": "スマホで使いたい"})
-    assert any("仕分け" in t for t in iv.status(led)[0])
+    todo, ready = iv.status(led)
+    assert any("仕分け" in t for t in todo) and not ready
+
+
+def test_台帳の状態の打ち間違いと_R1の未規定は止まる():
+    from specgap_lang import interview as iv
+
+    led = iv.new_ledger("メモ")
+    led.update(summary="a", out_of_scope=["b"])
+    led["usecases"].append({"id": "UC1", "level": "利用者目標", "main": ["a"], "extensions": [{"at": "1", "cond": "c", "handling": "h"}], "examples": [{"given": "g", "when": "w", "then": "t"}]})
+    led["questions"].append({"id": "Q1", "text": "x", "status": "Open"})
+    assert any("不正" in t for t in iv.status(led)[0])
+    led["questions"][0].update(status="unspec", answer="結果に影響しないため")
+    led["runtime"] = {k: {"status": "answered", "value": "x"} for k in iv.RUNTIME}
+    led["runtime"]["R1"] = {"status": "unspec", "value": "決めない"}
+    todo, ready = iv.status(led)
+    assert not ready and any("R1" in t and "未規定にできません" in t for t in todo)
+    led["runtime"]["R1"] = {"status": "answered", "value": "ブラウザ"}
+    led["runtime"]["R4"] = {"status": "unspec", "value": "決めない"}
+    assert iv.status(led) == ([], True)
 
 
 def test_台帳から出したplanの表は突合の対象にならない():

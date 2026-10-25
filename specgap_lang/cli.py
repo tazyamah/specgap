@@ -31,10 +31,19 @@ def report(findings) -> str:
 
 def run_interview(a) -> int:
     if a.action == "init":
+        if Path(a.ledger).exists() and not a.force:
+            print(f"{a.ledger} は既にあります（上書きするなら --force）", file=sys.stderr)
+            return 2
         interview.save(a.ledger, interview.new_ledger(a.title))
         print(f"台帳を作りました: {a.ledger}")
         return 0
-    led = interview.load(a.ledger)
+    try:
+        led = interview.load(a.ledger)
+        for k in interview.new_ledger("").keys():
+            led.setdefault(k, interview.new_ledger("")[k])
+    except (OSError, ValueError) as e:
+        print(f"台帳を読めません: {e}", file=sys.stderr)
+        return 2
     if a.action == "status":
         todo, ready = interview.status(led)
         print("\n".join(f"- {t}" for t in todo) or "- 聞くことは残っていません")
@@ -53,6 +62,7 @@ def main(argv=None) -> int:
     iv.add_argument("ledger")
     iv.add_argument("--title", default="（題名）")
     iv.add_argument("-o", help="render の出力先")
+    iv.add_argument("--force", action="store_true", help="init で既存の台帳を上書きする")
     c = sub.add_parser("check", help="コードを検査する")
     c.add_argument("code")
     s = sub.add_parser("spec", help="コードから仕様書（③）を生成する")
