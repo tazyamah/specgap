@@ -470,7 +470,7 @@ body { padding-bottom: 160px; }
     if (!o) { line.textContent = "操作を選んでください（" + DEVS[st.dev] + "）"; bNext.hidden = false; bOk.hidden = true; return; }
     line.innerHTML = finished ? "<b>結果</b>：" + o.res.hint + " <small>期待どおり？</small>" : "<b>" + (ptr + 1) + "/" + o.steps.length + "</b> " + o.steps[ptr].hint;
     if (mm) line.innerHTML += ' <span class="mk ng">NG済み：NG✎で理由を編集</span>';
-    bNext.hidden = finished; bOk.hidden = !finished; ngrow.hidden = true; $("bPrev").hidden = !(ptr > 0 || finished);
+    bNext.hidden = finished; bOk.hidden = !finished; ngrow.hidden = true; $("bPrev").hidden = !(ptr > 0 || finished || prevOp());
   }
   function start(i) {
     cur = i; ptr = 0; finished = false;
@@ -499,10 +499,17 @@ body { padding-bottom: 160px; }
   }
   sel.addEventListener("change", function () { start(parseInt(sel.value, 10)); });
   $("bReset").addEventListener("click", function () { if (cur < 0) { var t = firstTodo(st.dev) || mine(st.dev)[0]; start(t.id); } else start(cur); });
+  function prevOp() { var l = mine(st.dev), i = l.indexOf(ops[cur]); return i > 0 ? l[i - 1] : null; }
+  function startEnd(i) {
+    cur = i; var o = ops[i], t = o.tab === "ai" ? "t-ai" : "t-wf";
+    if ($(t).getAttribute("aria-selected") !== "true") $(t).click();
+    o.init(); for (var j = 0; j < o.steps.length; j++) o.steps[j].act();
+    ptr = o.steps.length; finished = true; say("操作「" + o.n + "」の最後の状態です。", ""); hl(o.res); fillSel(); showLine(); renderScen();
+  }
   function prev() {
     var o = ops[cur]; if (!o) return;
     var p = finished ? o.steps.length - 1 : ptr - 1;
-    if (p < 0) return;
+    if (p < 0) { var pv = prevOp(); if (pv) startEnd(pv.id); return; }
     o.init(); for (var j = 0; j < p; j++) o.steps[j].act();
     ptr = p; finished = false; hl(o.steps[ptr]); showLine();
   }
