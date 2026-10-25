@@ -102,11 +102,13 @@ textarea { resize: none; height: 56px; }
 
 .idt { font-size: 9.5px; fill: currentColor; fill-opacity: .4; }
 .uc-list .id { display: block; font-size: .68rem; color: var(--muted); opacity: .7; line-height: 1; margin-bottom: 2px; }
-.hl { outline: 3px solid var(--accent) !important; outline-offset: 2px; border-radius: 8px; animation: pulse 1.4s ease-in-out infinite; }
-@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 var(--accent-soft); } 50% { box-shadow: 0 0 0 8px var(--accent-soft); } }
+.hl { outline: 6px solid #ffe600 !important; outline-offset: 2px; border-radius: 8px; box-shadow: 0 0 0 9px #14161a, 0 0 18px 10px rgba(255, 230, 0, .75) !important; animation: pulse 1.2s ease-in-out infinite; position: relative; z-index: 2; }
+@keyframes pulse { 0%,100% { outline-color: #ffe600; } 50% { outline-color: #ffbf00; } }
 @media (prefers-reduced-motion: reduce) { .hl { animation: none; } }
 .pad { position: fixed; z-index: 30; left: 50%; transform: translateX(-50%); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); width: min(620px, calc(100% - 24px)); background: var(--panel); border: 2px solid var(--accent); border-radius: 14px; padding: 8px 10px; box-shadow: 0 6px 24px rgba(0,0,0,.28); display: grid; gap: 6px; }
-.pad .line { font-size: .9rem; min-height: 1.4em; }
+.pad .line { font-size: .9rem; min-height: 1.4em; display: flex; justify-content: space-between; gap: 8px; }
+.pad .prog { font-size: .8rem; color: var(--muted); white-space: nowrap; }
+.pad .prog.done { color: var(--pend); font-weight: 700; }
 .pad .line small { color: var(--muted); }
 .pad .prow { display: flex; gap: 6px; flex-wrap: wrap; }
 .pad select { flex: 1 1 200px; min-width: 0; font: inherit; font-size: .88rem; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--screen); color: var(--fg); }
@@ -236,8 +238,9 @@ body { padding-bottom: 160px; }
 </div>
 
 <div class="pad" id="pad" hidden role="group" aria-label="操作コントローラー">
-  <div class="line" id="padline">操作を選んでください</div>
+  <div class="line"><span id="padline">操作を選んでください</span><span class="prog" id="prog"></span></div>
   <div class="prow">
+    <button id="bDev" aria-label="端末を切り替える">スマホ</button>
     <select id="opsel" aria-label="確認する操作"></select>
     <button id="bReset">最初から</button>
     <button id="bNext" class="go">次へ</button>
@@ -367,6 +370,7 @@ body { padding-bottom: 160px; }
     devnote.textContent = d === "pc" ? "PC（AI案）：画面が広いので、左に「書く・見る」、右に「探す」を同時に出します。スマホと同じ情報が同じ並びで見えます。" : "スマホ（AI案）：画面が狭いので、上のボタンで「書く・見る」と「探す」を切り替えます。";
     render();
     say(d === "pc" ? "PC表示にしました。探すが右側に常に見えます。" : "スマホ表示にしました。探すは別画面です。", "J16, J33（見た目はAI案）");
+    if (window.__devChanged) window.__devChanged();
   }
   document.querySelectorAll("[data-dev]").forEach(function (b) { b.addEventListener("click", function () { setDev(b.dataset.dev); }); });
 
@@ -391,13 +395,32 @@ body { padding-bottom: 160px; }
     { uc: "探す", n: "単語だけで探す", init: function () { reset(); toSearch(); render(); }, steps: [{ sel: "#qw", hint: "単語を入れる", act: function () { st.q.word = "xxx"; render(); } }, { sel: "[data-act=search]", hint: "探すを押す", act: function () { doSearch(); } }], res: { sel: ".results", hint: "xxxを含む2件" } },
     { uc: "探す", n: "いつから、だけで探す", init: function () { reset(); toSearch(); render(); }, steps: [{ sel: "#qf", hint: "いつから＝2週間前", act: function () { st.q.from = new Date(now - 14 * DAY).toISOString().slice(0, 10); render(); } }, { sel: "[data-act=search]", hint: "探すを押す（終わりは空）", act: function () { doSearch(); } }], res: { sel: ".results", hint: "2週間前から今まで" } },
     { uc: "探す", n: "合うものが0件", init: function () { reset(); toSearch(); render(); }, steps: [{ sel: "#qt", hint: "いつまで＝1か月前", act: function () { st.q.to = new Date(now - 30 * DAY).toISOString().slice(0, 10); render(); } }, { sel: "#qw", hint: "単語＝xxx", act: function () { st.q.word = "xxx"; render(); } }, { sel: "[data-act=search]", hint: "探すを押す", act: function () { doSearch(); } }], res: { sel: ".results .empty", hint: "「1件もありませんでした」" } },
+    { dev: "phone", uc: "探す", n: "「探す」を押して画面を切り替える", init: function () { reset(); render(); }, steps: [{ sel: ".topbar [data-act=goSearch]", hint: "「探す」を押す", act: function () { st.page = "search"; render(); } }], res: { sel: "#qw", hint: "探す画面に切り替わる" } },
+    { dev: "pc", uc: "探す", n: "書く・見るの隣に探すが出ている", init: function () { reset(); render(); }, steps: [{ sel: ".cols > .scroll:nth-child(2)", hint: "右に「探す」が最初から出ている", act: function () {} }], res: { sel: ".cols > .scroll:first-child", hint: "左は「書く・見る」。切り替え不要" } },
     { uc: "AIに見てもらう", n: "場所を1回教えて質問", tab: "ai", init: function () {}, steps: [{ sel: ".chat .bubble:nth-child(1)", hint: "最初の1回だけ場所を教える", act: function () {} }, { sel: ".chat .bubble:nth-child(3)", hint: "あとは質問するだけ", act: function () {} }], res: { sel: ".chat .bubble:nth-child(4)", hint: "AIが添付も見て答える" } }
   ];
   ops.forEach(function (o, i) { o.id = i; });
   var marks = {}, cur = -1, ptr = 0, finished = false;
   var $ = function (id) { return document.getElementById(id); };
   var sel = $("opsel"), line = $("padline"), bNext = $("bNext"), bOk = $("bOk"), bNg = $("bNg"), ngrow = $("ngrow"), ngwhy = $("ngwhy");
-
+  var DEVS = { phone: "スマホ", pc: "PC" };
+  function mine(d) { return ops.filter(function (o) { return !o.dev || o.dev === d; }); }
+  function K(i, d) { return (d || st.dev) + ":" + i; }
+  function counts() {
+    var r = { total: 0, done: 0, ng: 0, by: {} };
+    Object.keys(DEVS).forEach(function (d) {
+      var l = mine(d), c = 0, n = 0;
+      l.forEach(function (o) { var m = marks[K(o.id, d)]; if (m) { c++; if (m.r === "ng") n++; } });
+      r.by[d] = { total: l.length, done: c, ng: n }; r.total += l.length; r.done += c; r.ng += n;
+    });
+    return r;
+  }
+  function showProg() {
+    var c = counts(), el = $("prog");
+    el.className = "prog" + (c.done === c.total ? " done" : "");
+    el.textContent = c.done === c.total ? "すべて完了（" + c.total + "件）" : "済 " + c.done + " / " + c.total + "（スマホ " + c.by.phone.done + "/" + c.by.phone.total + "・PC " + c.by.pc.done + "/" + c.by.pc.total + "）";
+    $("bDev").textContent = DEVS[st.dev];
+  }
   function clearHl() { document.querySelectorAll(".hl").forEach(function (e) { e.classList.remove("hl"); }); }
   function hl(t) {
     clearHl();
@@ -406,16 +429,17 @@ body { padding-bottom: 160px; }
   }
   function fillSel() {
     var h = "", g = "";
-    ops.forEach(function (o, i) {
+    mine(st.dev).forEach(function (o) {
       if (o.uc !== g) { if (g) h += "</optgroup>"; h += '<optgroup label="' + o.uc + '">'; g = o.uc; }
-      var m = marks[i] ? (marks[i].r === "ok" ? "✓ " : "✗ ") : "";
-      h += '<option value="' + i + '"' + (i === cur ? " selected" : "") + ">" + m + o.n + "</option>";
+      var m = marks[K(o.id)] ? (marks[K(o.id)].r === "ok" ? "✓ " : "✗ ") : "";
+      h += '<option value="' + o.id + '"' + (o.id === cur ? " selected" : "") + ">" + m + o.n + "</option>";
     });
     sel.innerHTML = h + "</optgroup>";
+    showProg();
   }
   function showLine() {
     var o = ops[cur];
-    if (!o) { line.textContent = "操作を選んでください"; return; }
+    if (!o) { line.textContent = "操作を選んでください（" + DEVS[st.dev] + "）"; bNext.hidden = false; bOk.hidden = true; return; }
     line.innerHTML = finished ? "<b>結果</b>：" + o.res.hint + " <small>期待どおり？</small>" : "<b>" + (ptr + 1) + "/" + o.steps.length + "</b> " + o.steps[ptr].hint;
     bNext.hidden = finished; bOk.hidden = !finished; ngrow.hidden = true;
   }
@@ -423,8 +447,8 @@ body { padding-bottom: 160px; }
     cur = i; ptr = 0; finished = false;
     var o = ops[i];
     var t = o.tab === "ai" ? "t-ai" : "t-wf";
-    if (!$(t).getAttribute("aria-selected") || $(t).getAttribute("aria-selected") === "false") $(t).click();
-    o.init(); say("操作「" + o.n + "」を最初の状態にしました。", ""); hl(o.steps[0]); fillSel(); showLine(); renderScen();
+    if ($(t).getAttribute("aria-selected") !== "true") $(t).click();
+    o.init(); say("操作「" + o.n + "」を最初の状態にしました（" + DEVS[st.dev] + "）。", ""); hl(o.steps[0]); fillSel(); showLine(); renderScen();
   }
   function next() {
     var o = ops[cur]; if (!o || finished) return;
@@ -432,42 +456,51 @@ body { padding-bottom: 160px; }
     if (ptr < o.steps.length) { hl(o.steps[ptr]); } else { finished = true; hl(o.res); }
     showLine();
   }
+  function firstTodo(d) { var l = mine(d).filter(function (o) { return !marks[K(o.id, d)]; }); return l.length ? l[0] : null; }
   function mark(r, why) {
     if (cur < 0) return;
-    marks[cur] = { r: r, why: why || "" }; fillSel(); renderScen();
-    if (cur + 1 < ops.length) start(cur + 1); else { clearHl(); line.innerHTML = "<b>最後まで確認しました。</b> <small>下のまとめを見てください</small>"; bNext.hidden = true; bOk.hidden = true; }
+    marks[K(cur)] = { r: r, why: why || "" };
+    var l = mine(st.dev), idx = l.indexOf(ops[cur]), nx = null;
+    for (var k = idx + 1; k < l.length; k++) { if (!marks[K(l[k].id)]) { nx = l[k]; break; } }
+    if (!nx) nx = firstTodo(st.dev);
+    if (!nx) { var other = st.dev === "phone" ? "pc" : "phone"; if (firstTodo(other)) { setDev(other); nx = firstTodo(other); } }
+    fillSel(); renderScen();
+    if (nx) start(nx.id);
+    else { clearHl(); cur = -1; line.innerHTML = "<b>すべて確認しました。</b> <small>下のまとめを見てください</small>"; bNext.hidden = true; bOk.hidden = true; fillSel(); }
   }
   sel.addEventListener("change", function () { start(parseInt(sel.value, 10)); });
-  $("bReset").addEventListener("click", function () { if (cur < 0) start(0); else start(cur); });
-  bNext.addEventListener("click", function () { if (cur < 0) start(0); else next(); });
+  $("bReset").addEventListener("click", function () { if (cur < 0) { var t = firstTodo(st.dev) || mine(st.dev)[0]; start(t.id); } else start(cur); });
+  bNext.addEventListener("click", function () { if (cur < 0) { var t = firstTodo(st.dev) || mine(st.dev)[0]; start(t.id); } else next(); });
   bOk.addEventListener("click", function () { mark("ok"); });
   bNg.addEventListener("click", function () { if (cur < 0) return; ngrow.hidden = false; ngwhy.focus(); });
   $("ngsave").addEventListener("click", function () { var w = ngwhy.value.trim(); ngwhy.value = ""; mark("ng", w); });
   ngwhy.addEventListener("keydown", function (e) { if (e.key === "Enter") $("ngsave").click(); });
-  window.__padInit = function () { if (cur < 0) { fillSel(); showLine(); } };
+  $("bDev").addEventListener("click", function () { setDev(st.dev === "phone" ? "pc" : "phone"); var t = firstTodo(st.dev) || mine(st.dev)[0]; start(t.id); });
+  window.__padInit = function () { fillSel(); showLine(); };
+  window.__devChanged = function () { if (cur >= 0 && ops[cur].dev && ops[cur].dev !== st.dev) { cur = -1; clearHl(); } fillSel(); showLine(); renderScen(); };
 
   var scenEl = $("scen"), sum = $("summary");
   function renderScen() {
     var h = "", g = "";
-    ops.forEach(function (o, i) {
+    mine(st.dev).forEach(function (o, n) {
       if (o.uc !== g) { h += "<h3>" + o.uc + "</h3>"; g = o.uc; }
-      var m = marks[i];
-      h += '<li class="step ' + (m ? m.r : "") + '"><div class="do"><b>' + (i + 1) + ". " + o.n + '</b><span class="exp">→ ' + o.res.hint + (m && m.why ? "　<b>NG理由: " + m.why.replace(/[&<>]/g, "") + "</b>" : "") + '</span></div><div class="btns">' +
-        (m ? '<span class="mk ' + m.r + '">' + (m.r === "ok" ? "OK" : "NG") + "</span>" : "") + '<button data-run="' + i + '">やってみる</button></div></li>';
+      var m = marks[K(o.id)];
+      h += '<li class="step ' + (m ? m.r : "") + '"><div class="do"><b>' + o.n + '</b><span class="exp">→ ' + o.res.hint + (m && m.why ? "　<b>NG理由: " + m.why.replace(/[&<>]/g, "") + "</b>" : "") + '</span></div><div class="btns">' +
+        (m ? '<span class="mk ' + m.r + '">' + (m.r === "ok" ? "OK" : "NG") + "</span>" : "") + '<button data-run="' + o.id + '">やってみる</button></div></li>';
     });
-    scenEl.innerHTML = h;
-    var ok = 0, ng = [];
-    ops.forEach(function (o, i) { if (marks[i] && marks[i].r === "ok") ok++; if (marks[i] && marks[i].r === "ng") ng.push(i); });
-    sum.innerHTML = "確認済み " + (ok + ng.length) + " / " + ops.length + "（OK " + ok + "、NG " + ng.length + "）" +
-      (ng.length ? "<br>NGの操作: " + ng.map(function (i) { return "操作" + (i + 1) + "「" + ops[i].n + "」" + (marks[i].why ? "：" + marks[i].why.replace(/[&<>]/g, "") : ""); }).join("<br>") + '<br><button id="cp">NGをコピー</button>' : "");
+    scenEl.innerHTML = '<li class="meta" style="list-style:none">いま表示している端末: ' + DEVS[st.dev] + "（端末を切り替えると、その端末の操作が出ます）</li>" + h;
+    var c = counts(), ngs = [];
+    Object.keys(DEVS).forEach(function (d) { mine(d).forEach(function (o) { var m = marks[K(o.id, d)]; if (m && m.r === "ng") ngs.push({ d: d, o: o, why: m.why }); }); });
+    sum.innerHTML = c.done === c.total ? "<b>すべて完了（" + c.total + "件）</b>　OK " + (c.done - c.ng) + "、NG " + c.ng : "確認済み " + c.done + " / " + c.total + "（スマホ " + c.by.phone.done + "/" + c.by.phone.total + "、PC " + c.by.pc.done + "/" + c.by.pc.total + "）　OK " + (c.done - c.ng) + "、NG " + c.ng;
+    if (ngs.length) sum.innerHTML += "<br>" + ngs.map(function (x) { return "NG［" + DEVS[x.d] + "］" + x.o.n + (x.why ? "：" + x.why.replace(/[&<>]/g, "") : ""); }).join("<br>") + '<br><button id="cp">NGをコピー</button>';
     var cp = $("cp");
     if (cp) cp.addEventListener("click", function () {
-      var txt = "NGの操作: " + ng.map(function (i) { return "操作" + (i + 1) + "「" + ops[i].n + "」" + (marks[i].why ? "：" + marks[i].why : ""); }).join("、");
+      var txt = "NGの操作: " + ngs.map(function (x) { return "［" + DEVS[x.d] + "］" + x.o.n + (x.why ? "：" + x.why : ""); }).join("、");
       try { navigator.clipboard.writeText(txt).then(function () { cp.textContent = "コピーしました"; }, function () { cp.textContent = "コピーできませんでした。上の文を選んでコピーしてください"; }); } catch (e) { cp.textContent = "上の文を選んでコピーしてください"; }
     });
   }
   scenEl.addEventListener("click", function (e) { var r = e.target.closest("[data-run]"); if (r) { start(parseInt(r.dataset.run, 10)); window.scrollTo({ top: $("view-wf").offsetTop - 8, behavior: "smooth" }); } });
 
-  setDev("phone"); renderScen();
+  setDev("phone"); renderScen(); fillSel();
 })();
 </script>
