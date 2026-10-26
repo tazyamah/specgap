@@ -1,0 +1,607 @@
+<title>ひとり用つぶやき 設計図</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* 配色: 紙のような中性色に、青みのある一色。状態の色は意味ごとに別（注意=琥珀、エラー=赤、反映前=青緑） */
+:root {
+  --bg: #f6f6f3; --panel: #ffffff; --fg: #1f2328; --muted: #656d76; --line: #d8d8d2;
+  --accent: #2d5be3; --accent-soft: #e6ecfd; --warn: #8a5a00; --warn-soft: #fbf0d4;
+  --err: #b42318; --err-soft: #fde7e4; --pend: #0d6e6e; --pend-soft: #dcf2f0; --screen: #fbfbf9;
+  --font: "Hiragino Sans", "Noto Sans JP", "Yu Gothic", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161a; --panel: #1c1f24; --fg: #e6e8eb; --muted: #9aa3ad; --line: #353a42;
+    --accent: #7c9bff; --accent-soft: #232c4d; --warn: #f0c36a; --warn-soft: #3a2f12;
+    --err: #ff8f84; --err-soft: #43201d; --pend: #6ed0cb; --pend-soft: #12332f; --screen: #181b20; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14161a; --panel: #1c1f24; --fg: #e6e8eb; --muted: #9aa3ad; --line: #353a42;
+  --accent: #7c9bff; --accent-soft: #232c4d; --warn: #f0c36a; --warn-soft: #3a2f12;
+  --err: #ff8f84; --err-soft: #43201d; --pend: #6ed0cb; --pend-soft: #12332f; --screen: #181b20; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--font); line-height: 1.7;
+  padding-block: 24px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 980px; margin: 0 auto; }
+h1 { font-size: 1.5rem; margin: 0 0 4px; text-wrap: balance; }
+h2 { font-size: 1.15rem; margin: 0 0 8px; }
+.lead { color: var(--muted); margin: 0 0 20px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab { font: inherit; padding: 8px 16px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 8px; cursor: pointer; }
+.tab.on, .tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tab:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+section.view { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+.note { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 10px 14px; font-size: .9rem; margin: 12px 0 0; }
+svg { display: block; width: 100%; height: auto; }
+figcaption { color: var(--muted); font-size: .88rem; margin-top: 8px; }
+.diagram { overflow-x: auto; }
+.diagram svg { min-width: 640px; }
+.uc-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 16px; }
+.uc-list div { border-top: 2px solid var(--accent); padding-top: 6px; font-size: .9rem; }
+.uc-list b { display: block; }
+.stage { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 24px; align-items: start; }
+@media (max-width: 760px) { .stage { grid-template-columns: 1fr; } }
+.phone { border: 2px solid var(--fg); border-radius: 22px; padding: 10px; background: var(--panel); max-width: 380px; width: 100%; }
+.screen { background: var(--screen); border: 1px solid var(--line); border-radius: 14px; height: 560px; position: relative; display: flex; flex-direction: column; overflow: hidden; }
+.topbar { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); }
+.topbar button { flex: 1; }
+.scroll { flex: 1; overflow-y: auto; padding: 10px; }
+.screen button, .ctrl button, .ctrl select { font: inherit; font-size: .88rem; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+.screen button.on, .ctrl button.on { background: var(--accent-soft); border-color: var(--accent); }
+.screen button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.screen button:disabled, .screen button[aria-disabled="true"] { opacity: .4; cursor: not-allowed; }
+.hint { font-size: .82rem; color: var(--warn); background: var(--warn-soft); border-radius: 8px; padding: 6px 10px; }
+.pane { position: relative; display: flex; flex-direction: column; min-height: 0; }
+.pane > .scroll { flex: 1; min-height: 0; }
+.form { border: 1px dashed var(--line); border-radius: 10px; padding: 8px; display: grid; gap: 6px; margin-bottom: 10px; background: var(--panel); }
+textarea, .screen input[type="text"], .screen input[type="date"] { font: inherit; font-size: .9rem; width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: var(--screen); color: var(--fg); }
+textarea { resize: none; height: 56px; }
+.row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.row .grow { flex: 1; }
+.post { border-bottom: 1px solid var(--line); padding: 8px 2px; font-size: .9rem; }
+.meta { color: var(--muted); font-size: .78rem; }
+.thumb { display: inline-block; width: 52px; height: 40px; border-radius: 6px; border: 1px solid var(--line); background: repeating-linear-gradient(45deg, var(--line) 0 4px, transparent 4px 8px); vertical-align: middle; margin-right: 6px; }
+.badge { font-size: .72rem; border-radius: 999px; padding: 1px 8px; background: var(--pend-soft); color: var(--pend); margin-left: 6px; }
+.banner { font-size: .82rem; padding: 6px 10px; border-radius: 8px; margin-bottom: 8px; }
+.banner.off { background: var(--pend-soft); color: var(--pend); }
+.banner.err { background: var(--err-soft); color: var(--err); }
+.banner.undo { background: var(--warn-soft); color: var(--warn); }
+.banner.done { background: var(--pend-soft); color: var(--pend); }
+.pact { display: flex; gap: 6px; margin-top: 4px; }
+.pact button { font-size: .75rem !important; padding: 2px 8px !important; }
+.empty { text-align: center; color: var(--muted); padding: 32px 0; }
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; margin-right: 8px; vertical-align: -2px; animation: sp 1s linear infinite; }
+@keyframes sp { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.totop { position: absolute; right: 12px; bottom: 12px; border-radius: 999px !important; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.ctrl { display: grid; gap: 14px; }
+.ctrl fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 0; }
+.ctrl legend { font-size: .85rem; color: var(--muted); padding: 0 6px; }
+.ctrl .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.ctrl label { font-size: .9rem; display: flex; gap: 8px; align-items: center; }
+.explain { background: var(--accent-soft); border-radius: 10px; padding: 12px 14px; font-size: .92rem; min-height: 4.2em; }
+.explain small { color: var(--muted); display: block; margin-top: 4px; }
+.chat { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 8px; max-width: 560px; background: var(--screen); }
+.bubble { padding: 8px 12px; border-radius: 12px; max-width: 88%; font-size: .92rem; }
+.bubble.me { background: var(--accent); color: #fff; justify-self: end; }
+.bubble.ai { background: var(--panel); border: 1px solid var(--line); }
+
+.phone.pc { max-width: 100%; border-radius: 12px; }
+.phone.pc .screen { height: 540px; }
+.cols { display: grid; grid-template-columns: 1.5fr 1fr; flex: 1; min-height: 0; }
+.cols > .scroll { border-left: 1px solid var(--line); background: var(--panel); }
+.pane-title { font-size: .78rem; color: var(--muted); margin: 0 0 6px; }
+.stage.wide { grid-template-columns: 1fr; }
+.devs { display: flex; gap: 6px; margin-bottom: 10px; }
+.scen { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.scen h3 { font-size: .9rem; margin: 10px 0 2px; color: var(--accent); }
+.scen li.step { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--panel); font-size: .88rem; }
+.scen li.step.ng { border-color: var(--err); background: var(--err-soft); }
+.scen li.step.ok { border-color: var(--pend); }
+.scen .do b { display: block; }
+.scen .exp { color: var(--muted); }
+.scen .btns { display: flex; gap: 4px; align-items: start; flex-wrap: wrap; justify-content: end; }
+.scen .btns button { font: inherit; font-size: .8rem; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+.scen .btns button.sel-ok { background: var(--pend-soft); border-color: var(--pend); color: var(--pend); }
+.scen .btns button.sel-ng { background: var(--err-soft); border-color: var(--err); color: var(--err); }
+.summary { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: .88rem; background: var(--panel); }
+.summary button { font: inherit; font-size: .82rem; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; margin-top: 6px; }
+
+.idt { font-size: 9.5px; fill: currentColor; fill-opacity: .4; }
+.uc-list .id { display: block; font-size: .68rem; color: var(--muted); opacity: .7; line-height: 1; margin-bottom: 2px; }
+.hl { outline: 6px solid #ffe600 !important; outline-offset: 2px; border-radius: 8px; box-shadow: 0 0 0 9px #14161a, 0 0 18px 10px rgba(255, 230, 0, .75) !important; animation: pulse 1.2s ease-in-out infinite; position: relative; z-index: 2; }
+@keyframes pulse { 0%,100% { outline-color: #ffe600; } 50% { outline-color: #ffbf00; } }
+@media (prefers-reduced-motion: reduce) { .hl { animation: none; } }
+.pad { position: fixed; z-index: 30; left: 50%; transform: translateX(-50%); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); width: min(620px, calc(100% - 24px)); background: var(--panel); border: 2px solid var(--accent); border-radius: 14px; padding: 8px 10px; box-shadow: 0 6px 24px rgba(0,0,0,.28); display: grid; gap: 6px; }
+.pad .line { font-size: .9rem; min-height: 1.4em; display: flex; justify-content: space-between; gap: 8px; }
+.pad .prog { font-size: .8rem; color: var(--muted); white-space: nowrap; }
+.pad .prog.done { color: var(--pend); font-weight: 700; }
+.pad .line small { color: var(--muted); }
+.pad .prow { display: flex; gap: 6px; flex-wrap: wrap; }
+.pad select { flex: 1 1 200px; min-width: 0; font: inherit; font-size: .88rem; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--screen); color: var(--fg); }
+.pad button { font: inherit; font-size: .9rem; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+.pad button.go { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pad button.okb { background: var(--pend); border-color: var(--pend); color: #fff; }
+.pad button.ngb { color: var(--err); border-color: var(--err); }
+.pad input { flex: 1; min-width: 0; font: inherit; font-size: .88rem; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--err); background: var(--screen); color: var(--fg); }
+.pad[hidden], .pad *[hidden] { display: none !important; }
+.mk { font-size: .78rem; padding: 1px 8px; border-radius: 999px; }
+.mk.ok { background: var(--pend-soft); color: var(--pend); } .mk.ng { background: var(--err-soft); color: var(--err); }
+body { padding-bottom: 160px; }
+.wrap { position: relative; }
+</style>
+
+<div class="wrap">
+  <h1>ひとり用つぶやき 設計図</h1>
+  <p class="lead">ここまでの答え（判断J1〜J48）を、図と画面の動きで見られるようにしたものです。間違いは文章でなく、この画面で見つけて指摘してください。</p>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t-uc" aria-selected="true" data-view="uc">ユースケース図</button>
+    <button class="tab" role="tab" id="t-wf" aria-selected="false" data-view="wf">画面の動き（さわれます）</button>
+    <button class="tab" role="tab" id="t-ai" aria-selected="false" data-view="ai">AIに見てもらう</button>
+  </div>
+
+  <section class="view" id="view-uc">
+    <h2>誰が何をするか</h2>
+    <figure class="diagram" style="margin:0">
+      <svg viewBox="0 0 760 420" role="img" aria-label="本人が、書く・見る・探す・AIに見てもらうの4つを行い、見る一覧の投稿から直す・消すを行う。Dropboxは記録の置き場、AIはDropboxを見る">
+        <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+        <rect x="170" y="14" width="420" height="392" rx="14" fill="none" stroke="currentColor" stroke-opacity=".45" stroke-dasharray="6 5"/>
+        <text x="190" y="38" font-size="13" fill="currentColor" fill-opacity=".7">ひとり用つぶやき（ブラウザで開く画面）</text>
+        <!-- 本人 -->
+        <g stroke="currentColor" stroke-width="2" fill="none"><circle cx="64" cy="190" r="14"/><path d="M64 204V252M36 222H92M64 252L44 290M64 252L84 290"/></g>
+        <text x="64" y="316" font-size="14" text-anchor="middle" fill="currentColor">本人</text>
+        <text x="64" y="334" font-size="11" text-anchor="middle" fill="currentColor" fill-opacity=".7">使う人はこの1人だけ</text>
+        <!-- ユースケース -->
+        <g font-size="14" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5">
+          <ellipse cx="300" cy="96" rx="92" ry="30"/><ellipse cx="300" cy="190" rx="92" ry="30"/>
+          <ellipse cx="300" cy="284" rx="92" ry="30"/><ellipse cx="300" cy="370" rx="92" ry="26"/>
+          <ellipse cx="500" cy="96" rx="68" ry="22" stroke-dasharray="4 3"/><ellipse cx="506" cy="246" rx="62" ry="22"/><ellipse cx="506" cy="302" rx="62" ry="22"/>
+        </g>
+        <g font-size="14" text-anchor="middle" fill="currentColor">
+          <text x="300" y="92">書く</text><text x="214" y="78" class="idt">UC1</text><text x="300" y="109" font-size="11" fill-opacity=".7">つながらなくても可</text>
+          <text x="300" y="186">投稿を見る</text><text x="214" y="172" class="idt">UC2</text><text x="300" y="203" font-size="11" fill-opacity=".7">24時間ぶんは常に見える</text>
+          <text x="300" y="280">日付・単語で探す</text><text x="214" y="266" class="idt">UC4</text><text x="300" y="297" font-size="11" fill-opacity=".7">日付は片側だけでも可</text>
+          <text x="300" y="366">AIに見てもらう</text><text x="214" y="354" class="idt">UC3</text>
+          <text x="500" y="100" font-size="12">画像などを添付</text>
+          <text x="506" y="244">直す</text><text x="450" y="230" class="idt">UC5</text><text x="506" y="260" font-size="11" fill-opacity=".7">圏外でも可</text>
+          <text x="506" y="300">消す</text><text x="450" y="286" class="idt">UC6</text><text x="506" y="316" font-size="11" fill-opacity=".7">30秒は戻せる</text>
+        </g>
+        <!-- 本人からの線 -->
+        <g stroke="currentColor" stroke-width="1.3" fill="none">
+          <path d="M92 214L212 106"/><path d="M92 222L208 190"/><path d="M92 240L212 280"/><path d="M92 250L222 360"/>
+          <path d="M392 96H432" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+          <path d="M376 212L446 240" stroke-dasharray="4 3" marker-end="url(#ar)"/><path d="M372 214L450 292" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+        </g>
+        <text x="412" y="86" font-size="10.5" text-anchor="middle" fill="currentColor" fill-opacity=".75">任意で追加</text>
+        <!-- 外部 -->
+        <g stroke="currentColor" stroke-width="1.5" fill="var(--panel)"><rect x="636" y="160" width="106" height="64" rx="8"/><rect x="636" y="318" width="106" height="64" rx="8"/></g>
+        <g font-size="14" text-anchor="middle" fill="currentColor">
+          <text x="689" y="188">Dropbox</text><text x="689" y="206" font-size="11" fill-opacity=".7">記録の置き場</text>
+          <text x="689" y="346">AI</text><text x="689" y="364" font-size="11" fill-opacity=".7">記録を見て答える</text>
+        </g>
+        <g stroke="currentColor" stroke-width="1.3" fill="none">
+          <path d="M392 190H636" marker-end="url(#ar)" marker-start="url(#ar)"/>
+          <path d="M384 112L636 172" marker-end="url(#ar)"/>
+          <path d="M388 364L636 350" marker-end="url(#ar)"/>
+          <path d="M689 318V224" marker-end="url(#ar)"/>
+        </g>
+        <g font-size="10.5" fill="currentColor" fill-opacity=".8" text-anchor="middle">
+          <text x="520" y="182">読む</text><text x="530" y="140">書く（投稿・添付）</text>
+          <text x="520" y="376">場所を1回だけ教える</text><text x="680" y="268" text-anchor="end">AIがDropboxの</text><text x="680" y="282" text-anchor="end">記録を読む</text>
+        </g>
+      </svg>
+      <figcaption>楕円が「本人がしたいこと」、右の四角が外にあるもの。「直す」「消す」は、見る一覧の投稿から選んで行います（点線）。本人は図の中でAIに記録を渡さず、AIは自分でDropboxを読みます。</figcaption>
+    </figure>
+    <div class="uc-list">
+      <div><span class="id">UC1</span><b>書く</b>文字・ファイル・リンクを入れて送信。空のときは送信ボタンが押せない状態で、押そうとすると「投稿を入力してから押してください」と出る。保存に失敗したら原因を表示。圏外では端末に一時保存して、つながったら自動で反映。</div>
+      <div><span class="id">UC2</span><b>投稿を見る</b>書く画面と同じ画面。新しい順で、下へ進むと続きが出る。添付はサムネイル。空なら「空です」、読み込み中は「読み込み中」。</div>
+      <div><span class="id">UC3</span><b>AIに見てもらう</b>Dropboxの場所を最初の1回だけ教える。見られなかったときはAIがそう答える。</div>
+      <div><span class="id">UC5</span><b>直す</b>一覧の投稿を選んで、文字・添付・リンクを直す。上書きで、日時と位置は元のまま。圏外でも直せて、つながったら自動で反映。別の端末で直したら、新しいほうが残る。</div>
+      <div><span class="id">UC6</span><b>消す</b>消すと一覧から隠れ、30秒のあいだ「元に戻す」が出る（電波は要らない）。30秒たつと削除が確定してDropboxからも消える。</div>
+      <div><span class="id">UC4</span><b>日付や単語で探す</b>日付（期間。始めか終わりの片方だけでもよい）と単語を組み合わせて探す。0件なら「1件もなかった」と表示。</div>
+    </div>
+    <p class="note">私の解釈・案の箇所：「画像などの添付は『書く』の中の1手」「日付と単語はAND（両方に合うもの）」「ブラウザで開く形」。違っていたら教えてください。</p>
+  </section>
+
+  <section class="view" id="view-wf" hidden>
+    <h2>画面の動きと、確認する操作</h2>
+    <p class="lead" style="margin-bottom:12px">画面は実際にさわれます。画面の下に浮いているレビュー操作パネルで操作を選び、[次へ]を押していくと、押す場所が光って画面が進みます（押し間違えたら[前へ]）。最後に OK か NG を付けてください（NGは理由も書けます）。NGを付けた操作は、NGボタンにカーソルを重ねる（スマホはNGボタンを押す）と理由を確認・編集でき、そのときの画面の状態も一緒に保存されます。</p>
+    <div class="devs" role="group" aria-label="端末">
+      <button class="tab" data-dev="phone" aria-pressed="true">スマホ</button>
+      <button class="tab" data-dev="pc" aria-pressed="false">PC</button>
+    </div>
+    <div class="stage" id="stage">
+      <div class="phone" id="frame"><div class="screen" id="screen"></div></div>
+      <div class="ctrl">
+        <fieldset><legend>いまの状況</legend>
+          <div class="chips" id="modes">
+            <button data-mode="normal" class="on">ふつう</button>
+            <button data-mode="empty">投稿が0件</button>
+            <button data-mode="loading">読み込み中</button>
+            <button data-mode="offline">圏外</button>
+          </div>
+        </fieldset>
+        <fieldset><legend>失敗させてみる</legend>
+          <label><input type="checkbox" id="full"> 保存先がいっぱい（次の送信が失敗する）</label>
+        </fieldset>
+        <fieldset><legend>時間を進める（デモ）</legend><div class="chips"><button id="tUndo">消して30秒たつ</button><button id="tStale">圏外のまま24時間たつ</button></div></fieldset>
+        <div class="explain" id="explain" aria-live="polite">ボタンや欄をさわると、ここに「いま何が起きたか」と根拠の判断番号が出ます。</div>
+        <p class="note" id="devnote" style="margin:0"></p>
+      </div>
+    </div>
+    <h2 style="margin-top:24px">確認する操作の一覧</h2>
+    <ol class="scen" id="scen"></ol>
+    <div class="summary" id="summary" aria-live="polite"></div>
+  </section>
+
+  <section class="view" id="view-ai" hidden>
+    <h2>AIに見てもらう（UC3）</h2>
+    <p class="lead">アプリの画面はありません。AIとの会話の中で、次のようになる想定です。</p>
+    <div class="chat">
+      <div class="bubble me">記録はDropboxの「ライフログ」フォルダにあります。これを見てください。<br><small>← 最初の1回だけ（J32）</small></div>
+      <div class="bubble ai">場所を覚えました。</div>
+      <div class="bubble me">病院の予約って、いつ取ったっけ？<br><small>← 以降は場所を言わなくてよい。探すのもAIが自分でやる（J20）</small></div>
+      <div class="bubble ai">3日前の投稿に「病院の予約を取った」とあります。添付の写真も確認しました。<br><small>← 添付ファイルも見る（J21）</small></div>
+      <div class="bubble me">去年の旅行の記録は？</div>
+      <div class="bubble ai">その期間の記録は見つかりませんでした。<br><small>← 見られないときはAIがそう答える。アプリは何もしない（J26）</small></div>
+    </div>
+    <p class="note">未確認：どのAIに頼むか、Dropboxの記録をAIが読めるようにする具体的な方法（読み取りの許可など）は、まだ決めていません。</p>
+  </section>
+</div>
+
+<div class="pad" id="pad" hidden role="group" aria-label="レビュー操作パネル">
+  <div class="line"><span id="padline">操作を選んでください</span><span class="prog" id="prog"></span></div>
+  <div class="prow">
+    <button id="bDev" aria-label="端末を切り替える">スマホ</button>
+    <select id="opsel" aria-label="確認する操作"></select>
+    <button id="bReset">最初から</button>
+    <button id="bPrev" hidden>前へ</button>
+    <button id="bNext" class="go">次へ</button>
+    <button id="bOk" class="okb" hidden>OK</button>
+    <button id="bNg" class="ngb">NG</button>
+  </div>
+  <div class="prow" id="ngrow" hidden><small class="prog" id="ngctx" style="flex-basis:100%;white-space:normal"></small><input id="ngwhy" placeholder="NGの理由（空でもよい）" aria-label="NGの理由"><button id="ngsave">保存して次へ</button></div>
+</div>
+<script>
+(function () {
+  var views = { uc: "view-uc", wf: "view-wf", ai: "view-ai" };
+  document.querySelectorAll(".tab[data-view]").forEach(function (t) {
+    t.addEventListener("click", function () {
+      document.querySelectorAll(".tab[data-view]").forEach(function (x) { x.setAttribute("aria-selected", x === t ? "true" : "false"); });
+      Object.keys(views).forEach(function (k) { document.getElementById(views[k]).hidden = (k !== t.dataset.view); });
+      document.getElementById("pad").hidden = (t.dataset.view === "uc");
+      if (t.dataset.view !== "uc" && window.__padInit) window.__padInit();
+    });
+  });
+
+  var DAY = 86400000, now = Date.now();
+  function seed() { return [
+    { id: 1, t: "駅前のカフェでコーヒー。静かで良かった", at: now - 25 * 60000, att: false },
+    { id: 2, t: "病院の予約 xxx を取った", at: now - 5 * 3600000, att: false },
+    { id: 3, t: "散歩の写真", at: now - 2 * DAY, att: true },
+    { id: 4, t: "xxx の件、本を図書館に返した", at: now - 12 * DAY, att: true },
+    { id: 5, t: "新しい靴を買った", at: now - 40 * DAY, att: false }
+  ]; }
+  var posts = seed();
+  var st = { dev: "phone", page: "main", mode: "normal", text: "", att: false, link: false, error: null, pending: [], sres: null, hint: null, editId: null, undo: null, done: null, stale: false, q: { from: "", to: "", word: "" }, shown: 5 };
+  var scr = document.getElementById("screen"), ex = document.getElementById("explain"), full = document.getElementById("full");
+  var frame = document.getElementById("frame"), stage = document.getElementById("stage"), devnote = document.getElementById("devnote");
+
+  function say(msg, j) { ex.innerHTML = msg + (j ? "<small>根拠: " + j + "</small>" : ""); }
+  function ago(ms) { var m = Math.max(0, Math.round((now - ms) / 60000)); if (m < 60) return m + "分前"; var h = Math.round(m / 60); if (h < 48) return h + "時間前"; return Math.round(h / 24) + "日前"; }
+  function esc(s) { return s.replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+  var nextId = 100;
+  function postHtml(p, act) {
+    return '<div class="post">' + (p.att ? '<span class="thumb" title="サムネイル"></span>' : "") + esc(p.t) +
+      (p.pending ? '<span class="badge">反映前</span>' : "") + '<div class="meta">' + ago(p.at) + (p.att ? " ・ 添付あり" : "") + "</div>" + (act ? '<div class="pact"><button data-act="edit" data-id="' + p.id + '">直す</button><button data-act="del" data-id="' + p.id + '">消す</button></div>' : "") + "</div>";
+  }
+  function visiblePosts() {
+    var all = st.pending.concat(posts);
+    if (st.mode === "empty") return [];
+    if (st.mode === "offline") return all.filter(function (p) { return now - p.at <= DAY; });
+    return all;
+  }
+
+  function mainPane() {
+    var h = "", empty = !st.text.trim() && !st.att && !st.link;
+    if (st.mode === "offline") h += '<div class="banner off">インターネットにつながっていません。書いた投稿は、つながったら自動で反映されます。</div>';
+    if (st.stale && st.mode === "offline" && st.pending.length) h += '<div class="banner err stale">まだ記録できていません（書いてから24時間以上たちました）。つながったら記録します。</div>';
+    if (st.error) h += '<div class="banner err">記録できませんでした。原因: ' + st.error + "</div>";
+    if (st.undo) h += '<div class="banner undo">「' + esc(st.undo.p.t) + '」を消しました <button data-act="undo">元に戻す</button> <span class="meta">残り30秒</span></div>';
+    if (st.done) h += '<div class="banner done">' + st.done + "</div>";
+    h += '<div class="form"><textarea id="txt" placeholder="いまどうしてる？" aria-label="投稿の文字">' + esc(st.text) + '</textarea>' +
+      '<div class="row"><button data-act="att" class="' + (st.att ? "on" : "") + '">' + (st.att ? "✓ 画像を添付中" : "画像などを添付") + '</button><button data-act="link" class="' + (st.link ? "on" : "") + '">' + (st.link ? "✓ リンクあり" : "リンクを貼る") + '</button><span class="grow"></span>' +
+      (st.editId !== null ? '<button data-act="cancel">やめる</button>' : "") + '<button class="primary" data-act="send"' + (empty ? ' aria-disabled="true"' : "") + ">" + (st.editId !== null ? "保存" : "送信") + "</button></div>" +
+      (st.hint ? '<div class="hint" role="alert">' + st.hint + "</div>" : "") + "</div>";
+    var list = visiblePosts();
+    if (st.mode === "loading") h += '<div class="empty"><span class="spin"></span>読み込み中</div>';
+    else if (!list.length) h += '<div class="empty">空です</div>';
+    else {
+      h += list.slice(0, st.shown).map(function (p) { return postHtml(p, true); }).join("");
+      if (st.mode === "offline" && posts.some(function (p) { return now - p.at > DAY; })) h += '<div class="meta oldnote" style="padding:8px 2px">つながっていないため、24時間より前の投稿は表示されません。</div>';
+      if (st.shown < list.length) h += '<div class="empty" data-act="more" style="padding:12px 0">下へ進むと続きが出ます…</div>';
+    }
+    return h;
+  }
+  function searchPane() {
+    var h = '<div class="form"><div class="row"><label class="grow meta">いつから（空でもよい）<input type="date" id="qf" value="' + st.q.from + '"></label><label class="grow meta">いつまで（空でもよい）<input type="date" id="qt" value="' + st.q.to + '"></label></div>' +
+      '<label class="meta">単語<input type="text" id="qw" placeholder="例: xxx" value="' + esc(st.q.word) + '"></label><button class="primary" data-act="search">探す</button></div>';
+    if (st.sres) h += '<div class="results">' + (st.sres.length ? st.sres.map(function (p) { return postHtml(p, false); }).join("") : '<div class="empty">1件もありませんでした</div>') + '</div>';
+    return h;
+  }
+
+  function render() {
+    var h;
+    if (st.dev === "pc") {
+      h = '<div class="cols"><div class="pane"><div class="scroll" id="sc"><p class="pane-title">書く・見る</p>' + mainPane() + '</div>' +
+        '<button class="totop" data-act="top" aria-label="トップに戻る">↑ トップへ</button></div><div class="scroll"><p class="pane-title">探す</p>' + searchPane() + "</div></div>";
+    } else {
+      h = '<div class="topbar"><button data-act="goMain" class="' + (st.page === "main" ? "on" : "") + '">書く・見る</button><button data-act="goSearch" class="' + (st.page === "search" ? "on" : "") + '">探す</button></div><div class="scroll" id="sc">' +
+        (st.page === "main" ? mainPane() : searchPane()) + "</div>" + (st.page === "main" ? '<button class="totop" data-act="top" aria-label="トップに戻る">↑ トップへ</button>' : "");
+    }
+    scr.innerHTML = h;
+    var t = document.getElementById("txt");
+    if (t) t.addEventListener("input", function () { st.text = t.value; st.hint = null; var hn = scr.querySelector(".hint"); if (hn) hn.remove(); var b = scr.querySelector('[data-act="send"]'), emp = !st.text.trim() && !st.att && !st.link; if (emp) b.setAttribute("aria-disabled", "true"); else b.removeAttribute("aria-disabled"); if (emp) say("何も入力されていないので、送信ボタンは押せない状態です（押そうとすると案内が出ます）。", "J10, J34"); });
+  }
+
+  function doSend() {
+    if (full.checked) { st.error = "保存先がいっぱいです。Dropboxの空き容量を増やすか、古い添付を消してください。"; render(); say("記録に失敗したので、投稿は増えず、エラーと原因を表示します。解決策の表示は今は求めていません。", "J11"); return; }
+    st.error = null; st.hint = null;
+    var p = { id: ++nextId, t: st.text.trim() || (st.att ? "（画像のみの投稿）" : "（リンクのみの投稿）"), at: Date.now(), att: st.att, pending: st.mode === "offline" };
+    if (p.pending) st.pending.unshift(p); else posts.unshift(p);
+    st.text = ""; st.att = false; st.link = false; if (st.mode === "empty") st.mode = "normal"; syncModes(); render();
+    say(p.pending ? "圏外なので、端末に一時保存して一覧に出しました（「反映前」の印）。つながったら自動で記録されます。" : "投稿を記録しました。一覧の一番上に出ます。", p.pending ? "J28, J30" : "J8");
+  }
+  function findPost(id) { var l = st.pending.indexOf(st.pending.filter(function (x) { return x.id === id; })[0]) >= 0 ? st.pending : posts; return { list: l, idx: l.map(function (x) { return x.id; }).indexOf(id) }; }
+  function doSave() {
+    if (full.checked) { st.error = "保存先がいっぱいです。Dropboxの空き容量を増やすか、古い添付を消してください。"; render(); say("記録に失敗したので、直した内容は反映せず、エラーと原因を表示します。", "J11"); return; }
+    st.error = null; st.hint = null;
+    var f = findPost(st.editId), p = f.list[f.idx];
+    p.t = st.text.trim() || (st.att ? "（画像のみの投稿）" : "（リンクのみの投稿）"); p.att = st.att;
+    if (st.mode === "offline") p.pending = true;
+    st.editId = null; st.text = ""; st.att = false; st.link = false; render();
+    say(p.pending ? "圏外なので、直した内容を端末に一時保存しました（「反映前」の印）。つながったら自動で反映されます。" : "上書きで直しました。日時と位置は元のままで、「直した」印は付けません。", p.pending ? "J38〜J41, J47" : "J39, J41");
+  }
+  function doDelete(id) {
+    var f = findPost(id), p = f.list.splice(f.idx, 1)[0];
+    st.undo = { p: p, list: f.list, idx: f.idx }; st.done = null; render();
+    say("端末の中だけで先に消して、一覧から隠しました。電波がなくても、30秒のあいだ「元に戻す」が効きます。", "J43, J46");
+  }
+  function doSearch() {
+    var g = function (id) { var e = document.getElementById(id); return e ? e.value : ""; };
+    st.q = { from: g("qf"), to: g("qt"), word: g("qw").trim() };
+    var f = st.q.from ? new Date(st.q.from).getTime() : null, to = st.q.to ? new Date(st.q.to).getTime() + DAY : null;
+    st.sres = posts.filter(function (p) { return (f === null || p.at >= f) && (to === null || p.at < to) && (!st.q.word || p.t.indexOf(st.q.word) >= 0); });
+    render(); say(st.sres.length ? "日付（片側だけでも可）と単語の両方に合う投稿を出します。" : "条件に合う投稿が1件もないので、「1件もありませんでした」と表示します。", st.sres.length ? "J23" : "J24");
+  }
+
+  scr.addEventListener("click", function (e) {
+    var a = e.target.closest("[data-act]"); if (!a) return;
+    var act = a.dataset.act;
+    if (act === "goMain") { st.page = "main"; render(); say("書く画面と見る画面は同じ画面です。", "J14"); }
+    else if (act === "goSearch") { st.page = "search"; render(); say("探す機能は別の画面にしています（同じ画面でもよい、と伺っています）。", "J16"); }
+    else if (act === "att") { st.att = !st.att; render(); say(st.att ? "画像などを添付しました（デモ）。送信ボタンが押せるようになります。" : "添付を外しました。", "J4, J8"); }
+    else if (act === "link") { st.link = !st.link; render(); say("文字・ファイル・リンクのどれか1つでもあれば送信できます（組み合わせは自由）。", "J8"); }
+    else if (act === "top") { var s = document.getElementById("sc"); s.scrollTo({ top: 0, behavior: "smooth" }); say("一覧の先頭に戻ります。", "J17"); }
+    else if (act === "more") { st.shown += 5; render(); say("下へ進むと続きが出ます。", "J17"); }
+    else if (act === "edit") { var ef = findPost(parseInt(a.dataset.id, 10)); st.editId = ef.list[ef.idx].id; st.text = ef.list[ef.idx].t; st.att = ef.list[ef.idx].att; st.hint = null; render(); say("投稿の文字・添付・リンクを直せます（上書き。直す前の文は残しません）。", "J38〜J40"); }
+    else if (act === "cancel") { st.editId = null; st.text = ""; st.att = false; st.hint = null; render(); say("直すのをやめました。", ""); }
+    else if (act === "del") doDelete(parseInt(a.dataset.id, 10));
+    else if (act === "undo") { if (st.undo) { st.undo.list.splice(st.undo.idx, 0, st.undo.p); st.undo = null; render(); say("元の位置に戻しました。", "J43, J45"); } }
+    else if (act === "send") {
+      if (!st.text.trim() && !st.att && !st.link) { st.hint = "投稿を入力してから押してください"; render(); say("空のまま送信を押そうとしたので、投稿は増えず、「投稿を入力してから押してください」と案内します。", "J10, J34"); }
+      else if (st.editId !== null) doSave();
+      else doSend();
+    }
+    else if (act === "search") doSearch();
+  });
+
+  document.getElementById("tUndo").addEventListener("click", function () {
+    if (!st.undo) { say("消した直後の30秒の話です。先に投稿の「消す」を押してください。", ""); return; }
+    st.undo = null; st.done = "削除が確定しました（Dropboxからも消えます）。もう元に戻せません。"; render(); say("30秒たったので、削除を確定してDropboxに反映します。", "J45, J46");
+  });
+  document.getElementById("tStale").addEventListener("click", function () { st.stale = true; render(); say("圏外のまま24時間たったので、「まだ記録できていません」と知らせます。以後も24時間おきに知らせます。", "J36"); });
+  function syncModes() { document.querySelectorAll("#modes button").forEach(function (b) { b.classList.toggle("on", b.dataset.mode === st.mode); }); }
+  function setMode(m) {
+    st.mode = m; st.error = null; syncModes(); render();
+    say({ normal: "ふつうの状態です。サンプルの投稿が新しい順に並びます。", empty: "投稿が1件もないので「空です」と表示します。", loading: "投稿はあるが読み込み中なので、「読み込み中」と表示します。", offline: "圏外です。直近24時間ぶんだけ見られ、書いた投稿は「反映前」の印付きで出ます。" }[m],
+      { normal: "J14, J15", empty: "J25", loading: "J25", offline: "J28, J29, J30" }[m]);
+  }
+  document.getElementById("modes").addEventListener("click", function (e) { var b = e.target.closest("button"); if (b) setMode(b.dataset.mode); });
+
+  // 端末の切り替え
+  function setDev(d) {
+    st.dev = d; frame.classList.toggle("pc", d === "pc"); stage.classList.toggle("wide", d === "pc");
+    document.querySelectorAll("[data-dev]").forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.dev === d ? "true" : "false"); b.classList.toggle("on", b.dataset.dev === d); });
+    devnote.textContent = d === "pc" ? "PC（AI案）：画面が広いので、左に「書く・見る」、右に「探す」を同時に出します。スマホと同じ情報が同じ並びで見えます。" : "スマホ（AI案）：画面が狭いので、上のボタンで「書く・見る」と「探す」を切り替えます。";
+    render();
+    say(d === "pc" ? "PC表示にしました。探すが右側に常に見えます。" : "スマホ表示にしました。探すは別画面です。", "J16, J33（見た目はAI案）");
+    if (window.__devChanged) window.__devChanged();
+  }
+  document.querySelectorAll("[data-dev]").forEach(function (b) { b.addEventListener("click", function () { setDev(b.dataset.dev); }); });
+
+  // 確認する操作（コントローラーで1手ずつ進める）
+  function reset(mode) { posts = seed(); st.pending = []; st.text = ""; st.att = false; st.link = false; st.error = null; st.hint = null; st.editId = null; st.undo = null; st.done = null; st.stale = false; st.sres = null; st.q = { from: "", to: "", word: "" }; st.shown = 5; st.page = "main"; full.checked = false; st.mode = mode || "normal"; syncModes(); }
+  function typed(v) { return function () { st.text = v; render(); }; }
+  function press(sel) { return function () { var e = document.querySelector(sel); if (e) e.click(); }; }
+  function toSearch() { if (st.dev === "phone") st.page = "search"; }
+  var SEND = "[data-act=send]", TXT = "#txt";
+  var ops = [
+    { uc: "書く", n: "空だと送信できない", init: function () { reset(); render(); }, steps: [{ sel: SEND, hint: "送信ボタンは薄い（押せない状態）", act: function () {} }, { sel: SEND, hint: "それでも押してみる", act: function () { var b = document.querySelector(SEND); if (b) b.click(); } }], res: { sel: ".hint", hint: "「投稿を入力してから押してください」と出る" } },
+    { uc: "書く", n: "文字を入れて送信", init: function () { reset(); render(); }, steps: [{ sel: TXT, hint: "文字を入れる", act: typed("今日は図書館で本を借りた") }, { sel: SEND, hint: "送信を押す", act: function () { doSend(); } }], res: { sel: ".post", hint: "一番上に出る" } },
+    { uc: "書く", n: "画像を付けて送信", init: function () { reset(); render(); }, steps: [{ sel: "[data-act=att]", hint: "画像を添付", act: function () { st.att = true; render(); } }, { sel: TXT, hint: "文字を入れる", act: typed("夕焼けの写真") }, { sel: SEND, hint: "送信を押す", act: function () { doSend(); } }], res: { sel: ".post", hint: "サムネイル付きで一番上に" } },
+    { uc: "書く", n: "保存先がいっぱいで送信", init: function () { reset(); full.checked = true; render(); }, steps: [{ sel: TXT, hint: "文字を入れる", act: typed("保存できないはず") }, { sel: SEND, hint: "送信を押す", act: function () { doSend(); } }], res: { sel: ".banner.err", hint: "エラーと原因が出る" } },
+    { uc: "書く", n: "圏外で書いて送信", init: function () { reset("offline"); render(); }, steps: [{ sel: TXT, hint: "文字を入れる", act: typed("電車の中で書いた") }, { sel: SEND, hint: "送信を押す", act: function () { doSend(); } }], res: { sel: ".badge", hint: "「反映前」の印つきで出る" } },
+    { uc: "書く", n: "圏外のまま24時間たった", init: function () { reset("offline"); st.pending = [{ id: 98, t: "電車の中で書いた", at: now - 20 * 3600000, att: false, pending: true }]; render(); }, steps: [{ sel: "#tStale", hint: "「圏外のまま24時間たつ」を押す", act: function () { st.stale = true; render(); } }], res: { sel: ".banner.stale", hint: "「まだ記録できていません」と出る" } },
+    { uc: "見る", n: "アプリを開く", init: function () { reset(); render(); }, steps: [{ sel: ".form", hint: "上は投稿フォーム", act: function () {} }], res: { sel: ".post", hint: "下に新しい順の一覧" } },
+    { uc: "見る", n: "投稿が0件で開く", init: function () { reset("empty"); render(); }, steps: [{ sel: ".form", hint: "アプリを開く", act: function () {} }], res: { sel: ".empty", hint: "「空です」" } },
+    { uc: "見る", n: "読み込み中に開く", init: function () { reset("loading"); render(); }, steps: [{ sel: ".form", hint: "アプリを開く", act: function () {} }], res: { sel: ".empty", hint: "「読み込み中」" } },
+    { uc: "見る", n: "続きを見て、トップへ戻る", init: function () { reset(); for (var i = 1; i <= 8; i++) posts.push({ t: "過去の投稿 " + i, at: now - (45 + i) * DAY, att: false }); render(); },
+      steps: [{ sel: "#sc", hint: "下へ進む", act: function () { st.shown = 99; render(); var e = document.getElementById("sc"); e.scrollTop = e.scrollHeight; } }, { sel: ".totop", hint: "トップへを押す", act: function () { document.getElementById("sc").scrollTop = 0; } }], res: { sel: ".form", hint: "先頭に戻った" } },
+    { uc: "見る", n: "圏外で開く", init: function () { reset("offline"); render(); }, steps: [{ sel: ".banner.off", hint: "圏外で開く", act: function () {} }], res: { sel: ".oldnote", hint: "24時間より前は出ない" } },
+    { uc: "直す", n: "文字を直して保存", init: function () { reset(); render(); }, steps: [{ sel: ".post [data-act=edit]", hint: "一番上の投稿の「直す」", act: press(".post [data-act=edit]") }, { sel: TXT, hint: "文字を直す", act: typed("駅前のカフェでコーヒー。静かで最高だった") }, { sel: SEND, hint: "保存を押す", act: press(SEND) }], res: { sel: ".post", hint: "元の位置のまま、直した文字（日時は同じ）" } },
+    { uc: "直す", n: "空にして保存しようとする", init: function () { reset(); render(); }, steps: [{ sel: ".post [data-act=edit]", hint: "一番上の投稿の「直す」", act: press(".post [data-act=edit]") }, { sel: TXT, hint: "文字を全部消す", act: typed("") }, { sel: SEND, hint: "保存を押す", act: press(SEND) }], res: { sel: ".hint", hint: "「投稿を入力してから押してください」" } },
+    { uc: "直す", n: "圏外で直す", init: function () { reset("offline"); render(); }, steps: [{ sel: ".post [data-act=edit]", hint: "一番上の投稿の「直す」", act: press(".post [data-act=edit]") }, { sel: TXT, hint: "文字を直す", act: typed("電波がないけど直した") }, { sel: SEND, hint: "保存を押す", act: press(SEND) }], res: { sel: ".badge", hint: "「反映前」の印つきで直る" } },
+    { uc: "消す", n: "消して、すぐ元に戻す", init: function () { reset(); render(); }, steps: [{ sel: ".post [data-act=del]", hint: "一番上の投稿の「消す」", act: press(".post [data-act=del]") }, { sel: "[data-act=undo]", hint: "「元に戻す」を押す", act: press("[data-act=undo]") }], res: { sel: ".post", hint: "元の位置に戻る" } },
+    { uc: "消す", n: "消して30秒たつ", init: function () { reset(); render(); }, steps: [{ sel: ".post [data-act=del]", hint: "一番上の投稿の「消す」", act: press(".post [data-act=del]") }, { sel: "#tUndo", hint: "「消して30秒たつ」を押す（デモ）", act: function () { $("tUndo").click(); } }], res: { sel: ".banner.done", hint: "削除が確定。もう戻せない" } },
+    { uc: "消す", n: "圏外で消して、元に戻す", init: function () { reset("offline"); render(); }, steps: [{ sel: ".post [data-act=del]", hint: "「消す」（電波はなくてよい）", act: press(".post [data-act=del]") }, { sel: "[data-act=undo]", hint: "「元に戻す」を押す", act: press("[data-act=undo]") }], res: { sel: ".post", hint: "電波がなくても戻る" } },
+    { uc: "探す", n: "単語だけで探す", init: function () { reset(); toSearch(); render(); }, steps: [{ sel: "#qw", hint: "単語を入れる", act: function () { st.q.word = "xxx"; render(); } }, { sel: "[data-act=search]", hint: "探すを押す", act: function () { doSearch(); } }], res: { sel: ".results", hint: "xxxを含む2件" } },
+    { uc: "探す", n: "いつから、だけで探す", init: function () { reset(); toSearch(); render(); }, steps: [{ sel: "#qf", hint: "いつから＝2週間前", act: function () { st.q.from = new Date(now - 14 * DAY).toISOString().slice(0, 10); render(); } }, { sel: "[data-act=search]", hint: "探すを押す（終わりは空）", act: function () { doSearch(); } }], res: { sel: ".results", hint: "2週間前から今まで" } },
+    { uc: "探す", n: "合うものが0件", init: function () { reset(); toSearch(); render(); }, steps: [{ sel: "#qt", hint: "いつまで＝1か月前", act: function () { st.q.to = new Date(now - 30 * DAY).toISOString().slice(0, 10); render(); } }, { sel: "#qw", hint: "単語＝xxx", act: function () { st.q.word = "xxx"; render(); } }, { sel: "[data-act=search]", hint: "探すを押す", act: function () { doSearch(); } }], res: { sel: ".results .empty", hint: "「1件もありませんでした」" } },
+    { dev: "phone", uc: "探す", n: "「探す」を押して画面を切り替える", init: function () { reset(); render(); }, steps: [{ sel: ".topbar [data-act=goSearch]", hint: "「探す」を押す", act: function () { st.page = "search"; render(); } }], res: { sel: "#qw", hint: "探す画面に切り替わる" } },
+    { dev: "pc", uc: "探す", n: "書く・見るの隣に探すが出ている", init: function () { reset(); render(); }, steps: [{ sel: ".cols > .scroll", hint: "右に「探す」が最初から出ている", act: function () {} }], res: { sel: ".cols > .pane", hint: "左は「書く・見る」。切り替え不要" } },
+    { uc: "AIに見てもらう", n: "場所を1回教えて質問", tab: "ai", init: function () {}, steps: [{ sel: ".chat .bubble:nth-child(1)", hint: "最初の1回だけ場所を教える", act: function () {} }, { sel: ".chat .bubble:nth-child(3)", hint: "あとは質問するだけ", act: function () {} }], res: { sel: ".chat .bubble:nth-child(4)", hint: "AIが添付も見て答える" } }
+  ];
+  ops.forEach(function (o, i) { o.id = i; });
+  var marks = {}, cur = -1, ptr = 0, finished = false;
+  var $ = function (id) { return document.getElementById(id); };
+  var sel = $("opsel"), line = $("padline"), bNext = $("bNext"), bOk = $("bOk"), bNg = $("bNg"), ngrow = $("ngrow"), ngwhy = $("ngwhy");
+  var DEVS = { phone: "スマホ", pc: "PC" };
+  function mine(d) { return ops.filter(function (o) { return !o.dev || o.dev === d; }); }
+  function K(i, d) { return (d || st.dev) + ":" + i; }
+  function counts() {
+    var r = { total: 0, done: 0, ng: 0, by: {} };
+    Object.keys(DEVS).forEach(function (d) {
+      var l = mine(d), c = 0, n = 0;
+      l.forEach(function (o) { var m = marks[K(o.id, d)]; if (m) { c++; if (m.r === "ng") n++; } });
+      r.by[d] = { total: l.length, done: c, ng: n }; r.total += l.length; r.done += c; r.ng += n;
+    });
+    return r;
+  }
+  function showProg() {
+    var c = counts(), el = $("prog");
+    el.className = "prog" + (c.done === c.total ? " done" : "");
+    el.textContent = c.done === c.total ? "すべて完了（" + c.total + "件）" : "済 " + c.done + " / " + c.total + "（スマホ " + c.by.phone.done + "/" + c.by.phone.total + "・PC " + c.by.pc.done + "/" + c.by.pc.total + "）";
+    $("bDev").textContent = DEVS[st.dev];
+  }
+  function clearHl() { document.querySelectorAll(".hl").forEach(function (e) { e.classList.remove("hl"); }); }
+  function hl(t) {
+    clearHl();
+    var e = document.querySelector(t.sel);
+    if (e) { e.classList.add("hl"); try { e.scrollIntoView({ block: "nearest", behavior: "auto" }); } catch (x) {} }
+  }
+  function fillSel() {
+    var h = "", g = "";
+    mine(st.dev).forEach(function (o) {
+      if (o.uc !== g) { if (g) h += "</optgroup>"; h += '<optgroup label="' + o.uc + '">'; g = o.uc; }
+      var m = marks[K(o.id)] ? (marks[K(o.id)].r === "ok" ? "✓ " : "✗ ") : "";
+      h += '<option value="' + o.id + '"' + (o.id === cur ? " selected" : "") + ">" + m + o.n + "</option>";
+    });
+    sel.innerHTML = h + "</optgroup>";
+    showProg();
+  }
+  var MODES = { normal: "ふつう", empty: "投稿が0件", loading: "読み込み中", offline: "圏外" }, editing = false, ngctx = null;
+  function captureCtx() {
+    var o = ops[cur];
+    return { dev: st.dev, mode: st.mode, page: st.page, text: st.text, att: st.att, full: full.checked, hint: !!st.hint, error: !!st.error,
+      step: finished ? "結果を確かめる時（" + o.res.hint + "）" : "手順" + (ptr + 1) + "/" + o.steps.length + "「" + o.steps[ptr].hint + "」の時" };
+  }
+  function ctxText(c) {
+    if (!c) return "";
+    var p = [DEVS[c.dev], MODES[c.mode]];
+    if (c.dev === "phone") p.push(c.page === "main" ? "書く・見る画面" : "探す画面");
+    p.push(c.step);
+    if (c.text) p.push("入力中「" + c.text + "」"); if (c.att) p.push("画像添付中"); if (c.full) p.push("保存先いっぱいに設定"); if (c.hint) p.push("案内表示あり"); if (c.error) p.push("エラー表示あり");
+    return p.join("／");
+  }
+  function showNg() {
+    var m = cur >= 0 && marks[K(cur)], on = !!(m && m.r === "ng");
+    bNg.textContent = on ? "NG✎" : "NG";
+    bNg.title = on ? "NGの理由：" + (m.why || "（理由なし）") + "／状態：" + ctxText(m.ctx) + "（押すと編集）" : "";
+    return on ? m : null;
+  }
+  function showLine() {
+    var o = ops[cur], mm = showNg();
+    if (!o) { line.textContent = "操作を選んでください（" + DEVS[st.dev] + "）"; bNext.hidden = false; bOk.hidden = true; return; }
+    line.innerHTML = finished ? "<b>結果</b>：" + o.res.hint + " <small>期待どおり？</small>" : "<b>" + (ptr + 1) + "/" + o.steps.length + "</b> " + o.steps[ptr].hint;
+    if (mm) line.innerHTML += ' <span class="mk ng">NG済み：NG✎で理由を編集</span>';
+    bNext.hidden = finished; bOk.hidden = !finished; ngrow.hidden = true; $("bPrev").hidden = !(ptr > 0 || finished || prevOp());
+  }
+  function start(i) {
+    cur = i; ptr = 0; finished = false;
+    var o = ops[i];
+    var t = o.tab === "ai" ? "t-ai" : "t-wf";
+    if ($(t).getAttribute("aria-selected") !== "true") $(t).click();
+    o.init(); say("操作「" + o.n + "」を最初の状態にしました（" + DEVS[st.dev] + "）。", ""); hl(o.steps[0]); fillSel(); showLine(); renderScen();
+  }
+  function next() {
+    var o = ops[cur]; if (!o || finished) return;
+    o.steps[ptr].act(); ptr++;
+    if (ptr < o.steps.length) { hl(o.steps[ptr]); } else { finished = true; hl(o.res); }
+    showLine();
+  }
+  function firstTodo(d) { var l = mine(d).filter(function (o) { return !marks[K(o.id, d)]; }); return l.length ? l[0] : null; }
+  function mark(r, why, c) {
+    if (cur < 0) return;
+    marks[K(cur)] = { r: r, why: why || "", ctx: c };
+    var l = mine(st.dev), idx = l.indexOf(ops[cur]), nx = null;
+    for (var k = idx + 1; k < l.length; k++) { if (!marks[K(l[k].id)]) { nx = l[k]; break; } }
+    if (!nx) nx = firstTodo(st.dev);
+    if (!nx) { var other = st.dev === "phone" ? "pc" : "phone"; if (firstTodo(other)) { setDev(other); nx = firstTodo(other); } }
+    fillSel(); renderScen();
+    if (nx) start(nx.id);
+    else { clearHl(); cur = -1; line.innerHTML = "<b>すべて確認しました。</b> <small>下のまとめを見てください</small>"; bNext.hidden = true; bOk.hidden = true; $("bPrev").hidden = true; fillSel(); showNg(); }
+  }
+  sel.addEventListener("change", function () { start(parseInt(sel.value, 10)); });
+  $("bReset").addEventListener("click", function () { if (cur < 0) { var t = firstTodo(st.dev) || mine(st.dev)[0]; start(t.id); } else start(cur); });
+  function prevOp() { var l = mine(st.dev), i = l.indexOf(ops[cur]); return i > 0 ? l[i - 1] : null; }
+  function startEnd(i) {
+    cur = i; var o = ops[i], t = o.tab === "ai" ? "t-ai" : "t-wf";
+    if ($(t).getAttribute("aria-selected") !== "true") $(t).click();
+    o.init(); for (var j = 0; j < o.steps.length; j++) o.steps[j].act();
+    ptr = o.steps.length; finished = true; say("操作「" + o.n + "」の最後の状態です。", ""); hl(o.res); fillSel(); showLine(); renderScen();
+  }
+  function prev() {
+    var o = ops[cur]; if (!o) return;
+    var p = finished ? o.steps.length - 1 : ptr - 1;
+    if (p < 0) { var pv = prevOp(); if (pv) startEnd(pv.id); return; }
+    o.init(); for (var j = 0; j < p; j++) o.steps[j].act();
+    ptr = p; finished = false; hl(o.steps[ptr]); showLine();
+  }
+  $("bPrev").addEventListener("click", prev);
+  bNext.addEventListener("click", function () { if (cur < 0) { var t = firstTodo(st.dev) || mine(st.dev)[0]; start(t.id); } else next(); });
+  bOk.addEventListener("click", function () { mark("ok", "", captureCtx()); });
+  bNg.addEventListener("click", function () {
+    if (cur < 0) return;
+    var m = marks[K(cur)]; editing = !!(m && m.r === "ng");
+    ngctx = editing ? m.ctx : captureCtx(); ngwhy.value = editing ? m.why : "";
+    $("ngctx").textContent = "この理由は次の状態に紐づきます：" + ctxText(ngctx);
+    $("ngsave").textContent = editing ? "保存" : "保存して次へ";
+    ngrow.hidden = false; ngwhy.focus();
+  });
+  $("ngsave").addEventListener("click", function () {
+    var w = ngwhy.value.trim(); ngwhy.value = "";
+    if (editing) { marks[K(cur)] = { r: "ng", why: w, ctx: ngctx }; editing = false; fillSel(); renderScen(); showLine(); }
+    else mark("ng", w, ngctx);
+  });
+  ngwhy.addEventListener("keydown", function (e) { if (e.key === "Enter") $("ngsave").click(); });
+  $("bDev").addEventListener("click", function () { setDev(st.dev === "phone" ? "pc" : "phone"); var t = firstTodo(st.dev) || mine(st.dev)[0]; start(t.id); });
+  window.__padInit = function () { fillSel(); showLine(); };
+  window.__devChanged = function () { if (cur >= 0 && ops[cur].dev && ops[cur].dev !== st.dev) { cur = -1; clearHl(); } fillSel(); showLine(); renderScen(); };
+
+  var scenEl = $("scen"), sum = $("summary");
+  function renderScen() {
+    var h = "", g = "";
+    mine(st.dev).forEach(function (o, n) {
+      if (o.uc !== g) { h += "<h3>" + o.uc + "</h3>"; g = o.uc; }
+      var m = marks[K(o.id)];
+      h += '<li class="step ' + (m ? m.r : "") + '"><div class="do"><b>' + o.n + '</b><span class="exp">→ ' + o.res.hint + (m && m.why ? "　<b>NG理由: " + esc(m.why) + "</b>" : "") + (m && m.r === "ng" && m.ctx ? "<br><small>そのときの状態：" + esc(ctxText(m.ctx)) + "</small>" : "") + '</span></div><div class="btns">' +
+        (m ? '<span class="mk ' + m.r + '">' + (m.r === "ok" ? "OK" : "NG") + "</span>" : "") + '<button data-run="' + o.id + '">やってみる</button></div></li>';
+    });
+    scenEl.innerHTML = '<li class="meta" style="list-style:none">いま表示している端末: ' + DEVS[st.dev] + "（端末を切り替えると、その端末の操作が出ます）</li>" + h;
+    var c = counts(), ngs = [];
+    Object.keys(DEVS).forEach(function (d) { mine(d).forEach(function (o) { var m = marks[K(o.id, d)]; if (m && m.r === "ng") ngs.push({ d: d, o: o, why: m.why, ctx: m.ctx }); }); });
+    sum.innerHTML = c.done === c.total ? "<b>すべて完了（" + c.total + "件）</b>　OK " + (c.done - c.ng) + "、NG " + c.ng : "確認済み " + c.done + " / " + c.total + "（スマホ " + c.by.phone.done + "/" + c.by.phone.total + "、PC " + c.by.pc.done + "/" + c.by.pc.total + "）　OK " + (c.done - c.ng) + "、NG " + c.ng;
+    if (ngs.length) sum.innerHTML += "<br>" + ngs.map(function (x) { return "NG［" + DEVS[x.d] + "］" + x.o.n + (x.ctx ? "（状態：" + esc(ctxText(x.ctx)) + "）" : "") + (x.why ? "：" + esc(x.why) : ""); }).join("<br>") + '<br><button id="cp">NGをコピー</button>';
+    var cp = $("cp");
+    if (cp) cp.addEventListener("click", function () {
+      var txt = "NGの操作: " + ngs.map(function (x) { return "［" + DEVS[x.d] + "］" + x.o.n + (x.ctx ? "（状態：" + ctxText(x.ctx) + "）" : "") + (x.why ? "：" + x.why : ""); }).join("、");
+      try { navigator.clipboard.writeText(txt).then(function () { cp.textContent = "コピーしました"; }, function () { cp.textContent = "コピーできませんでした。上の文を選んでコピーしてください"; }); } catch (e) { cp.textContent = "上の文を選んでコピーしてください"; }
+    });
+  }
+  scenEl.addEventListener("click", function (e) { var r = e.target.closest("[data-run]"); if (r) { start(parseInt(r.dataset.run, 10)); window.scrollTo({ top: $("view-wf").offsetTop - 8, behavior: "smooth" }); } });
+
+  setDev("phone"); renderScen(); fillSel();
+})();
+</script>

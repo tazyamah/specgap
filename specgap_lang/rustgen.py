@@ -42,6 +42,7 @@ pub fn 範囲内(名: &str, x: i128, lo: Option<i128>, hi: Option<i128>) -> i128
     範囲検査(名, x, lo, hi).expect("範囲の宣言に反する値を書こうとした");
     x
 }
+pub fn バイト列表示(b: &[u8]) -> String { format!("0x{}", b.iter().map(|x| format!("{:02x}", x)).collect::<String>()) }
 pub fn 集合表示(s: &BTreeSet<String>) -> String {
     format!("{{{}}}", s.iter().cloned().collect::<Vec<_>>().join(","))
 }
@@ -51,15 +52,25 @@ pub fn 写像表示<V: Display>(m: &BTreeMap<String, V>) -> String {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum 行き先 {
     処理(&'static str),
+    待つ(&'static str),
     応答,
+}
+pub struct トリガ定義 {
+    pub 名前: &'static str,
+    /// (種別, 要因, 行き先の処理)。期限の要因は秒数。先に起きた要因が勝つ（実行は基盤）。
+    pub 要因: &'static [(&'static str, &'static str, &'static str)],
 }
 '''
 
 
 def rust_type(t: Type) -> str:
     k = t.kind
-    if k in ("ID", "参照"):
+    if k in ("ID", "参照", "文字列"):
         return "String"
+    if k == "日時":
+        return "i64"
+    if k == "バイト列":
+        return "Vec<u8>"
     if k in ("整数", "金額"):
         return phys(t)
     if k == "割合":
@@ -82,6 +93,8 @@ def show_expr(t: Type, x: str) -> str:
         return f"写像表示(&{x})"
     if k == "集合":
         return f"集合表示(&{x})"
+    if k == "バイト列":
+        return f"バイト列表示(&{x})"
     return x
 
 
@@ -109,8 +122,66 @@ class Gen:
         self.results()
         for proc in self.p.processes:
             ProcGen(self, proc).emit()
+        for q in self.p.queries:
+            self.query(q)
         self.flows()
+        self.triggers()
         return "\n".join(self.out) + "\n"
+
+    def query(self, q):
+        """問い合わせ（読むだけの処理）：保存を読み、条件・絞り込み・並びで選んだ対象のIDの列を返す。書込も外部作用も無い。"""
+        n = q.name
+        fields = {f.name: f for f in self.ck.data[q.target].fields}
+        key = self.key(q.target)
+        ins = dict(q.inputs)
+
+        def ty(t):
+            r = rust_type(t)
+            return f"Option<{r}>" if t.optional else r
+
+        self.w(f"// ---- 問い合わせ {n}（読むだけ） ----")
+        self.w(f"pub struct {n}入力 {{")
+        for name, t in q.inputs:
+            self.w(f"    pub {name}: {ty(t)},")
+        self.w("}")
+        self.w(f"impl {n}入力 {{\n    pub fn 検査(&self) -> Result<(), String> {{")
+        for name, t in q.inputs:
+            if t.kind in ("整数", "金額") and t.range:
+                x = f"*x as i128" if t.optional else f"self.{name} as i128"
+                chk = f'範囲検査("{name}", {x}, {opt(t.range.lo)}, {opt(t.range.hi)})?;'
+                self.w(f"        if let Some(x) = &self.{name} {{ {chk} }}" if t.optional else f"        {chk}")
+        self.w("        Ok(())\n    }\n}")
+        self.w(f"pub struct {n}文脈 {{")
+        for name, t in q.refs:
+            self.w(f"    pub {name}: {rust_type(t)},")
+        self.w("}")
+        self.w(f"pub fn {n}(ctx: &{n}文脈, 保存: &保存, 入力: &{n}入力) -> Vec<String> {{")
+        self.w(f"    let mut 行: Vec<&{q.target}> = 保存.{q.target}.values().filter(|r| {{")
+        for f, op, st in q.conds:
+            sname = fields[f].type.target
+            self.w(f"        if !(r.{f} {op} {sname}::{st}) {{ return false; }}")
+        for f, op, a in q.filters:
+            if op == "直近":
+                self.w(f"        if !(r.{f} >= ctx.現在 - {a}) {{ return false; }}")
+                continue
+            t = ins[a]
+            cond = {"以上": f"r.{f} >= *x", "以下": f"r.{f} <= *x", "含む": f"r.{f}.contains(x.as_str())"}[op]
+            if t.optional:
+                self.w(f"        if let Some(x) = &入力.{a} {{ if !({cond}) {{ return false; }} }}")
+            else:
+                self.w(f"        {{ let x = &入力.{a}; if !({cond}) {{ return false; }} }}")
+        self.w("        true\n    }).collect();")
+        if q.order:
+            f, d = q.order
+            a, b = ("b", "a") if d == "新しい順" else ("a", "b")
+            self.w(f"    行.sort_by(|a, b| {a}.{f}.cmp(&{b}.{f}).then({a}.{key}.cmp(&{b}.{key})));")
+        else:
+            self.w(f"    行.sort_by(|a, b| a.{key}.cmp(&b.{key}));")
+        if q.limit:
+            t = ins[q.limit]
+            n_expr = f"入力.{q.limit}.map_or(行.len(), |x| x as usize)" if t.optional else f"入力.{q.limit} as usize"
+            self.w(f"    行.truncate({n_expr});")
+        self.w(f"    行.into_iter().map(|r| r.{key}.clone()).collect()\n}}\n")
 
     def states(self):
         for s in self.p.states:
@@ -118,6 +189,10 @@ class Gen:
             self.w("#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]")
             self.w(f"pub enum {s.name} {{ {', '.join(vs)} }}")
             self.w(f"impl {s.name} {{")
+            self.w("    pub fn 名前から(s: &str) -> Option<Self> {\n        match s {")
+            for v in vs:
+                self.w(f'            "{v}" => Some({s.name}::{v}),')
+            self.w("            _ => None,\n        }\n    }")
             self.w("    pub fn 名前(&self) -> &'static str {\n        match self {")
             for v in vs:
                 self.w(f'            {s.name}::{v} => "{v}",')
@@ -193,7 +268,8 @@ class Gen:
             names = [n for n, _ in e.params]
             pat = ", ".join(names)
             fmt = ", ".join("{}" for _ in names)
-            self.w(f'            外部作用::{e.name.replace(".", "_")} {{ {pat}, 冪等キー }} => format!("{e.name}({fmt}, 冪等キー={{}})", {pat}, 冪等キー),')
+            shown = ", ".join(show_expr(t, n) for n, t in e.params)
+            self.w(f'            外部作用::{e.name.replace(".", "_")} {{ {pat}, 冪等キー }} => format!("{e.name}({fmt}, 冪等キー={{}})", {shown}, 冪等キー),')
         self.w("        }\n    }\n}\n")
 
     def results(self):
@@ -212,6 +288,19 @@ class Gen:
                     self.w(f'            {r.name}::{v}({", ".join(names)}) => format!("{v}({fmt})", {shown}),')
                 else:
                     self.w(f'            {r.name}::{v} => "{v}".to_string(),')
+            self.w("        }\n    }")
+            self.w("    pub fn 名前(&self) -> &'static str {\n        match self {")
+            for v, ts in r.variants:
+                self.w(f'            {r.name}::{v}' + ("(..)" if ts else "") + f' => "{v}",')
+            self.w("        }\n    }")
+            self.w("    pub fn 引数(&self) -> Vec<String> {\n        match self {")
+            for v, ts in r.variants:
+                if ts:
+                    names = [f"a{i}" for i in range(len(ts))]
+                    shown = ", ".join(f'format!("{{}}", {show_expr(t, n)})' for t, n in zip(ts, names))
+                    self.w(f'            {r.name}::{v}({", ".join(names)}) => vec![{shown}],')
+                else:
+                    self.w(f'            {r.name}::{v} => vec![],')
             self.w("        }\n    }\n}\n")
 
     def flows(self):
@@ -224,8 +313,18 @@ class Gen:
                 for v, ts in rdef.variants:
                     pat = f"{rdef.name}::{v}" + ("(..)" if ts else "")
                     dest = m[v]
-                    self.w(f"        {pat} => " + ("行き先::応答," if dest == "応答" else f'行き先::処理("{dest}"),'))
+                    self.w(f"        {pat} => " + ("行き先::応答," if dest == "応答" else f'行き先::待つ("{dest[3:]}"),' if dest.startswith("待つ ") else f'行き先::処理("{dest}"),'))
                 self.w("    }\n}\n")
+
+    def triggers(self):
+        if not self.p.triggers:
+            return
+        self.w("// 【トリガ】：待ちの宣言。要因ごとの行き先。作成・発火・期限の監視は基盤の仕事。")
+        self.w("pub const トリガ一覧: &[トリガ定義] = &[")
+        for tg in self.p.triggers:
+            cs = ", ".join(f'("{k}", "{key}", "{d}")' for k, key, d in tg.causes)
+            self.w(f'    トリガ定義 {{ 名前: "{tg.name}", 要因: &[{cs}] }},')
+        self.w("];\n")
 
 
 class ProcGen:
@@ -236,6 +335,7 @@ class ProcGen:
         self.scope: dict[str, tuple[str, str]] = {}  # 名前 → (種類, 型トークン)
         self.lines: list[str] = []
         self.ind = 1
+        self.in_loop = False
 
     def L(self, s=""):
         self.lines.append("    " * self.ind + s)
@@ -247,7 +347,7 @@ class ProcGen:
     def wrap(self, tok, x):
         if tok in ("Int", "Money"):
             return f"({x} as i128)"
-        if tok in ("ID",) or tok.startswith("Map:") or tok == "Set":
+        if tok in ("ID", "Str", "Bytes") or tok.startswith("Map:") or tok == "Set":
             return f"{x}.clone()"
         return x
 
@@ -293,7 +393,7 @@ class ProcGen:
             l, r = self.rx(e.l), self.rx(e.r)
             if e.op == "*" and "Ratio" in (lt, rt):
                 return f"積({r}, {l})" if lt == "Ratio" else f"積({l}, {r})"
-            op = "==" if e.op == "==" else e.op
+            op = {"かつ": "&&"}.get(e.op, e.op)
             return f"({l} {op} {r})"
         if isinstance(e, (SetB, SumE)):
             return self.builder(e)
@@ -361,13 +461,15 @@ class ProcGen:
                 d = st.e.d
                 self.L(f"let {st.name} = match 保存.{d}.get(&({self.rx(st.e.e)})) {{")
                 self.L("    Some(r) => r,")
-                if st.absent:
+                if st.absent and self.in_loop:
+                    self.L(f"    None => {{ 外部列.truncate(束の始め); return {self.ret_expr(st.absent)}; }}")
+                elif st.absent:
                     self.L(f"    None => return {self.ret_expr(st.absent)},")
                 self.L("};")
                 self.scope[st.name] = ("local", f"Rec:{d}")
             else:
                 tok = self.tok(st.e)
-                ty = {"Int": "i128", "Money": "i128", "Rational": "有理", "ID": "String", "Set": "BTreeSet<String>"}[tok]
+                ty = {"Int": "i128", "Money": "i128", "Rational": "有理", "ID": "String", "Str": "String", "Time": "i64", "Set": "BTreeSet<String>"}[tok]
                 self.L(f"let {st.name}: {ty} = {self.rx(st.e)};")
                 self.scope[st.name] = ("local", tok)
         elif isinstance(st, Update):
@@ -409,6 +511,18 @@ class ProcGen:
             self.L("};")
             self.L(f"書込列.push(書込::{st.data}_新規({st.name}.clone()));")
             self.scope[st.name] = ("local", f"Rec:{st.data}")
+        elif isinstance(st, ForEach):
+            head, body, saved = self.bind_lines(st.binder, "")
+            self.L("let 束の始め = 外部列.len();")
+            self.L(head)
+            for b in body:
+                self.L("    " + b)
+            self.in_loop = True
+            for inner in st.body:
+                self.stmt(inner)
+            self.in_loop = False
+            self.L("}")
+            self.scope = saved
         elif isinstance(st, Request):
             eff = self.ck.effects[st.effect]
             parts = []
@@ -429,6 +543,8 @@ class ProcGen:
         g.w("}")
         g.w(f"impl {n}入力 {{\n    /// 外部から取り込むときの、範囲の宣言の検査\n    pub fn 検査(&self) -> Result<(), String> {{")
         for name, t in proc.inputs:
+            if t.kind == "バイト列" and t.range:
+                g.w(f'        範囲検査("{name}の長さ", self.{name}.len() as i128, {opt(t.range.lo)}, {opt(t.range.hi)})?;')
             if t.kind in ("整数", "金額") and t.range:
                 g.w(f'        範囲検査("{name}", self.{name} as i128, {opt(t.range.lo)}, {opt(t.range.hi)})?;')
             if t.kind == "写像" and t.value.kind in ("整数", "金額") and t.value.range:
@@ -454,7 +570,9 @@ class ProcGen:
         g.w("}\n")
 
 
-def cargo_toml(name: str) -> str:
+def cargo_toml(name: str, host: bool = False) -> str:
+    crate_type = 'crate-type = ["cdylib", "rlib"]\n' if host else ""
+    opt = 'opt-level = "s"\n' if host else ""
     return f'''[package]
 name = "{name}"
 version = "0.1.0"
@@ -462,9 +580,9 @@ edition = "2021"
 
 [lib]
 path = "src/lib.rs"
-
+{crate_type}
 [profile.release]
-overflow-checks = true
+{opt}overflow-checks = true
 '''
 
 

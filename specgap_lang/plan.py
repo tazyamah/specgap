@@ -65,8 +65,8 @@ def classify(headers: list[str]) -> str | None:
     h = set(headers)
     for kind, need in (
         ("データ", {"項目", "型・範囲"}), ("状態", {"状態", "区分"}), ("遷移", {"元", "先", "起こす処理"}),
-        ("拒否", {"元", "先", "拒否の理由"}), ("処理", {"入力", "読む", "書く"}), ("不変条件", {"内容"}),
-        ("指定", {"項目", "指定"}), ("具体例", {"期待する結果"}),
+        ("拒否", {"元", "先", "拒否の理由"}), ("問い合わせ", {"問い合わせ", "条件", "並び"}), ("処理", {"入力", "読む", "書く"}), ("不変条件", {"内容"}),
+        ("トリガ", {"トリガ", "要因", "行き先"}), ("外部作用", {"外部作用", "出す内容"}), ("出来事", {"出来事", "起こし方", "処理"}), ("指定", {"項目", "指定"}), ("具体例", {"期待する結果"}),
     ):
         if need <= h:
             return kind
@@ -123,8 +123,12 @@ def compare_static(spec: dict, plan: dict) -> list[Finding]:
     a = {(r["データ"], r["状態"]): {"区分": r["区分"].strip()} for r in sect("状態")}
     b = {(d, s): {"区分": k} for d, s, k in spec["状態"]}
     cmp_map("状態", a, b, out, j)
-    a = {(r["データ"], r["元"], r["先"]): {"起こす処理": r["起こす処理"].strip()} for r in sect("遷移")}
-    b = {(d, x, y): {"起こす処理": p} for d, x, y, p in spec["遷移"]}
+    # 同じ遷移を複数の処理が起こせる（別端末の操作の取り込みなど）。処理名の集合として比べる
+    a = {(r["データ"], r["元"], r["先"]): {"起こす処理": ",".join(sorted(items(r["起こす処理"])))} for r in sect("遷移")}
+    b = {}
+    for d, x, y, p in spec["遷移"]:
+        b.setdefault((d, x, y), set()).add(p)
+    b = {k: {"起こす処理": ",".join(sorted(v))} for k, v in b.items()}
     cmp_map("遷移", a, b, out, lambda k: f"{k[0]}: {k[1]}→{k[2]}")
     a = {(r["データ"], r["元"], r["先"]): {} for r in sect("拒否")}
     b = {(d, x, y): {} for d, x, y, _ in spec["拒否"]}
@@ -137,6 +141,24 @@ def compare_static(spec: dict, plan: dict) -> list[Finding]:
                       "結果→行き先": items(",".join(f"{v}→{d}" for v, d in x["結果"])),
                       "外部作用": items(",".join(x["外部"]))} for x in spec["処理"]}
     cmp_map("処理", a, b, out, str)
+    # 問い合わせ（読むだけの処理）
+    a = {r["問い合わせ"]: {"入力": items(r.get("入力", "")), "読む": items(r.get("読む", "")), "条件": items(r.get("条件", "")),
+                           "並び": n(r.get("並び", "")), "先頭": n(r.get("先頭", ""))} for r in sect("問い合わせ")}
+    b = {x["問い合わせ"]: {"入力": items(",".join(x["入力"])), "読む": items(",".join(x["読む"])), "条件": items(",".join(x["条件"])),
+                           "並び": n(x["並び"]), "先頭": n(x["先頭"])} for x in spec["問い合わせ"]}
+    cmp_map("問い合わせ", a, b, out, str)
+    # トリガ（要因ごとの行き先）
+    a = {(r["トリガ"], n(r["要因"])): {"行き先": n(r["行き先"])} for r in sect("トリガ")}
+    b = {(t, n(c)): {"行き先": n(d)} for t, c, d in spec["トリガ"]}
+    cmp_map("トリガ", a, b, out, lambda k: f"{k[0]}: {k[1]}")
+    # 外部作用（外へ出す内容）
+    a = {r["外部作用"]: {"出す内容": n(r["出す内容"])} for r in sect("外部作用")}
+    b = {e: {"出す内容": n(c)} for e, c in spec["外部作用"]}
+    cmp_map("外部作用", a, b, out, lambda k: k)
+    # 出来事（外の出来事が何を起こすか）
+    a = {(r["出来事"], n(r["起こし方"]), n(r["処理"])): {} for r in sect("出来事")}
+    b = {(e, n(h), n(d)): {} for e, h, d in spec["出来事"]}
+    cmp_map("出来事", a, b, out, lambda k: f"{k[0]}: {k[1]} → {k[2]}")
     # 不変条件（内容の文字列で突合）
     a = {n(r["内容"]): {} for r in sect("不変条件")}
     b = {n(t): {} for t in spec["不変条件"]}

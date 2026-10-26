@@ -17,8 +17,22 @@ class ExampleError(Exception):
 def lit(t: Type, text: str, ck: Checker) -> str:
     text = text.strip()
     k = t.kind
-    if k in ("ID", "参照"):
+    if k in ("ID", "参照", "文字列"):
         return f'"{text}".to_string()'
+    if k == "バイト列":
+        h = text[2:] if text.startswith("0x") else None
+        if h is None or len(h) % 2 or any(c not in "0123456789abcdefABCDEF" for c in h):
+            raise ExampleError(f"バイト列は 0x に続く16進数で書きます（「{text}」）")
+        return "vec![" + ", ".join(f"0x{h[i:i + 2]}u8" for i in range(0, len(h), 2)) + "]"
+    if k == "日時":
+        if not text.lstrip("-").isdigit():
+            raise ExampleError(f"日時は秒の数で書きます（「{text}」）")
+        return f"{text}i64"
+    if k == "集合":
+        if not (text.startswith("{") and text.endswith("}")):
+            raise ExampleError(f"集合は {{要素, …}} で書きます（「{text}」）")
+        items = [x.strip() for x in split_top(text[1:-1], ",")]
+        return "BTreeSet::from([" + ", ".join(f'"{x}".to_string()' for x in items) + "])"
     if k in ("整数", "金額"):
         if not text.lstrip("-").isdigit():
             raise ExampleError(f"数のはずが「{text}」です")
@@ -56,10 +70,11 @@ def kv(text: str) -> dict[str, str]:
 
 
 def example_code(ck: Checker, row: dict) -> str:
-    proc = ck.procs.get(row["処理"].strip())
+    q = ck.queries.get(row["処理"].strip())
+    proc = q or ck.procs.get(row["処理"].strip())
     if proc is None:
         raise ExampleError(f"処理「{row['処理']}」がコードにありません")
-    info = ck.infos[proc.name]
+    info = ck.infos[proc.name] if q is None else None
     L = ["    {", "        let mut 保存 = 保存::default();"]
     ctx = {}
     for item in split_top(row.get("前提", ""), ";"):
@@ -88,7 +103,7 @@ def example_code(ck: Checker, row: dict) -> str:
         if name not in ctx:
             raise ExampleError(f"前提に 参照「{name}」がありません")
         fields.append(f"{name}: {lit(t, ctx[name], ck)}")
-    for d in sorted(set(info.new_ids)):
+    for d in sorted(set(info.new_ids)) if info else []:
         if f"新{d}ID" not in ctx:
             raise ExampleError(f"前提に 採番「新{d}ID」がありません")
         fields.append(f'新{d}ID: "{ctx[f"新{d}ID"]}".to_string()')
@@ -97,10 +112,23 @@ def example_code(ck: Checker, row: dict) -> str:
     ins = []
     for name, t in proc.inputs:
         if name not in given:
+            if getattr(t, "optional", False):
+                ins.append(f"{name}: None")
+                continue
             raise ExampleError(f"入力に「{name}」がありません")
-        ins.append(f"{name}: {lit(t, given[name], ck)}")
+        v = lit(t, given[name], ck)
+        ins.append(f"{name}: Some({v})" if getattr(t, "optional", False) else f"{name}: {v}")
     L.append(f"        let 入力 = {proc.name}入力 {{ {', '.join(ins)} }};")
     eid = row["ID"].strip()
+    if q is not None:
+        L += [
+            "        match 入力.検査() {",
+            f'            Err(e) => println!("{eid}\\t入力不正({{}})\\t\\t", e),',
+            f'            Ok(()) => println!("{eid}\\t一覧({{}})\\t\\t", {q.name}(&ctx, &保存, &入力).join(",")),',
+            "        }",
+            "    }",
+        ]
+        return "\n".join(L)
     L += [
         "        match 入力.検査() {",
         f'            Err(e) => println!("{eid}\\t入力不正({{}})\\t\\t", e),',
@@ -132,10 +160,16 @@ def runner_source(ck: Checker, rows: list[dict]) -> tuple[str, list[Finding]]:
     return src + "\n".join(blocks) + "\n}\n", problems
 
 
-def write_crate(ck: Checker, lib_src: str, runner_src: str, dest: Path):
+HOST_MOD = "\npub mod host;\n"
+
+
+def write_crate(ck: Checker, lib_src: str, runner_src: str, dest: Path, host: bool = False):
     (dest / "src" / "bin").mkdir(parents=True, exist_ok=True)
-    (dest / "Cargo.toml").write_text(cargo_toml("specgap_app"))
-    (dest / "src" / "lib.rs").write_text(lib_src)
+    (dest / "Cargo.toml").write_text(cargo_toml("specgap_app", host))
+    (dest / "src" / "lib.rs").write_text(lib_src + (HOST_MOD if host else ""))
+    if host:
+        from .hostgen import host_source
+        (dest / "src" / "host.rs").write_text(host_source(ck))
     (dest / "src" / "bin" / "plan_examples.rs").write_text(runner_src)
 
 

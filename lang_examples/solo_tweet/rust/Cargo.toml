@@ -1,0 +1,12 @@
+[package]
+name = "specgap_app"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = "s"
+overflow-checks = true

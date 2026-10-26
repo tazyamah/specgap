@@ -98,10 +98,30 @@ class Parser:
                 p.processes.append(self.process(line))
             elif kw == "フロー":
                 p.flows.append(self.flow(line))
+            elif kw == "トリガ":
+                p.triggers.append(self.trigger(line))
+            elif kw == "問い合わせ":
+                p.queries.append(self.query(line))
+            elif kw == "出来事":
+                p.events.append(self.event(line))
             else:
                 raise ParseError(f"未知の定義「{kw}」です", line)
             self.skip_nl()
+        self.add_sync_state(p)
         return p
+
+    def add_sync_state(self, p: Program):
+        """保存先（外部）を持つデータには、未同期かどうかの状態「記録」を言語が足す（J63）。人は宣言しない"""
+        ext = [d for d in p.data if d.store]
+        if not ext:
+            return
+        for d in ext:
+            if any(f.name == "記録" for f in d.fields):
+                raise ParseError(f"データ {d.name} の「記録」は、保存先の宣言から言語が足します。書かないでください", d.line)
+            d.fields.append(Field("記録", Type("名前", target="記録状態")))
+        if any(s.name == "記録状態" for s in p.states):
+            raise ParseError("状態「記録状態」は、保存先の宣言から言語が足します。書かないでください", ext[0].line)
+        p.states.append(State("記録状態", initial="端末保存済", middle=["記録済"], endless=True, line=ext[0].line))
 
     def block_open(self):
         self.expect("{")
@@ -110,6 +130,7 @@ class Parser:
     # ---- データ ----
     def data(self, line) -> Data:
         name = self.name()
+        store = self.name() if self.accept("保存先") else None
         self.block_open()
         fields = []
         while not self.accept("}"):
@@ -125,7 +146,7 @@ class Parser:
                     f.optional = True
             fields.append(f)
             self.end_line()
-        return Data(name, fields, line)
+        return Data(name, fields, line, store)
 
     def range_opt(self):
         if self.peek().kind == "NUM":
@@ -144,6 +165,10 @@ class Parser:
             if self.accept("の集合"):
                 return Type("集合", value=Type("ID"))
             return Type("ID")
+        if tok in ("文字列", "日時"):
+            return Type(tok)
+        if tok == "バイト列":  # 範囲は長さ（バイト数）
+            return Type(tok, range=self.range_opt())
         if tok in ("整数", "割合"):
             return Type(tok, range=self.range_opt())
         if tok == "金額":
@@ -169,7 +194,11 @@ class Parser:
             elif kw == "中間":
                 s.middle += self.comma_list(self.name)
             elif kw == "終了":
-                s.final += self.comma_list(self.name)
+                names = self.comma_list(self.name)
+                if names == ["なし"]:
+                    s.endless = True
+                else:
+                    s.final += names
             elif kw == "拒否":
                 a = self.name()
                 self.expect("→")
@@ -212,8 +241,17 @@ class Parser:
         self.expect("(")
         params = self.comma_list(lambda: (self.name(), (self.expect(":"), self.type())[1]))
         self.expect(")")
+        failures = []
+        if self.accept("失敗"):
+            failures = self.comma_list(self.name)
+        no_wait = None
+        if self.accept("待たない"):
+            t = self.next()
+            if t.kind != "STR":
+                raise self.err("待たない の後ろには、理由を \"…\" で書いてください")
+            no_wait = t.val
         self.end_line()
-        return EffectDecl(name, params, line)
+        return EffectDecl(name, params, line, failures, no_wait)
 
     def part(self, line) -> Part:
         name = self.name()
@@ -313,6 +351,13 @@ class Parser:
             cond = self.expr() if self.accept(",") else None
             self.expect("}")
             s = Update(target, op, value, b, cond, line)
+        elif self.accept("各"):
+            b = self.binder()
+            self.block_open()
+            body = []
+            while not self.accept("}"):
+                body.append(self.stmt())
+            s = ForEach(b, body, line)
         elif self.accept("要求"):
             eff = self.dotted()
             self.expect("(")
@@ -353,6 +398,12 @@ class Parser:
 
     # ---- 式 ----
     def expr(self):
+        l = self.cmp_expr()
+        while self.accept("かつ"):
+            l = Bin("かつ", l, self.cmp_expr())
+        return l
+
+    def cmp_expr(self):
         l = self.add()
         if self.peek().kind == "OP" and self.peek().val in CMP:
             op = self.next().val
@@ -445,6 +496,107 @@ class Parser:
             entries.append((proc, routes))
             self.end_line()
         return Flow(name, entries, line)
+
+    # ---- 問い合わせ（読むだけの処理） ----
+    def query(self, line) -> Query:
+        q = Query(self.name(), line=line)
+        self.block_open()
+
+        def typed():
+            n = self.name()
+            self.expect(":")
+            t = self.type()
+            if self.accept("任意"):
+                t.optional = True
+            return n, t
+
+        while not self.accept("}"):
+            kw = self.name()
+            if kw == "入力":
+                q.inputs += self.comma_list(typed)
+            elif kw == "参照":
+                q.refs += self.comma_list(typed)
+            elif kw == "対象":
+                q.target = self.name()
+            elif kw == "条件":
+                f = self.name()
+                op = self.next().val
+                if op not in ("==", "!="):
+                    raise self.err("問い合わせの条件は「項目 == 状態」か「項目 != 状態」の形です")
+                q.conds.append((f, op, self.name()))
+            elif kw == "絞り込み":
+                f = self.name()
+                op = self.name()
+                if op == "直近":
+                    n = self.num()
+                    unit = self.name()
+                    if unit not in self.UNITS:
+                        raise self.err(f"時間の単位「{unit}」は使えません（秒・分・時間・日）")
+                    q.filters.append((f, op, str(n * self.UNITS[unit])))
+                elif op in ("以上", "以下", "含む"):
+                    q.filters.append((f, op, self.name()))
+                else:
+                    raise self.err(f"絞り込みの種類「{op}」は使えません（以上・以下・含む・直近）")
+            elif kw == "並び":
+                f = self.name()
+                d = self.name()
+                if d not in ("新しい順", "古い順"):
+                    raise self.err("並びは「新しい順」か「古い順」です")
+                q.order = (f, d)
+            elif kw == "先頭":
+                q.limit = self.name()
+            elif kw == "読む":
+                q.reads += self.comma_list(self.access)
+            else:
+                raise self.err(f"問い合わせの中に「{kw}」は書けません")
+            self.end_line()
+        return q
+
+    # ---- 出来事（外の出来事をきっかけに処理を起こす） ----
+    def event(self, line) -> Event:
+        ev = Event(self.name(), line=line)
+        self.block_open()
+        while not self.accept("}"):
+            kw = self.name()
+            if kw == "各":
+                q = self.name()
+                self.expect("→")
+                ev.steps.append(("各", q, self.name()))
+            elif kw == "外から":
+                ev.steps.append(("外から", "", self.name()))
+            else:
+                raise self.err("出来事の中は「各 問い合わせ → 処理」か「外から 処理」です")
+            self.end_line()
+        return ev
+
+    # ---- トリガ ----
+    UNITS = {"秒": 1, "分": 60, "時間": 3600, "日": 86400}
+
+    def trigger(self, line) -> Trigger:
+        name = self.name()
+        self.expect("(")
+        params = self.comma_list(lambda: (self.name(), (self.expect(":"), self.type())[1]))
+        self.expect(")")
+        self.block_open()
+        causes = []
+        while not self.accept("}"):
+            kind = self.name()
+            if kind == "応答":
+                key = self.name()
+            elif kind == "期限":
+                if self.accept("現在"):  # 「現在 + 30 分」。現在は動的具体化の【参照】
+                    self.expect("+")
+                n = self.num()
+                unit = self.name()
+                if unit not in self.UNITS:
+                    raise self.err(f"時間の単位「{unit}」は使えません（秒・分・時間・日）")
+                key = str(n * self.UNITS[unit])
+            else:
+                raise self.err(f"トリガの要因は「応答」か「期限」です（「{kind}」は使えません）")
+            self.expect("→")
+            causes.append((kind, key, self.name()))
+            self.end_line()
+        return Trigger(name, params, causes, line)
 
 
 def parse(src: str) -> Program:

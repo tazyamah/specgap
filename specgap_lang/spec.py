@@ -3,6 +3,30 @@ from .ast import *  # noqa: F401,F403
 from .check import Checker, phys, tok_of
 
 
+def fmt_cause(kind: str, key: str) -> str:
+    if kind != "期限":
+        return key
+    s = int(key)
+    for unit, sec in (("日", 86400), ("時間", 3600), ("分", 60)):
+        if s % sec == 0 and not (unit == "日" and s < 2 * 86400):  # 24時間は「1日」でなく「24時間」と書く
+            return f"現在+{s // sec}{unit}"
+    return f"現在+{s}秒"
+
+
+def fmt_secs(s: int) -> str:
+    for unit, sec in (("日", 86400), ("時間", 3600), ("分", 60)):
+        if s % sec == 0 and not (unit == "日" and s < 2 * 86400):
+            return f"{s // sec}{unit}"
+    return f"{s}秒"
+
+
+def query_rows(q) -> dict:
+    conds = [f"{f} {op} {st}" for f, op, st in q.conds]
+    conds += [f"{f} 直近 {fmt_secs(int(a))}" if op == "直近" else f"{f} {op} {a}" for f, op, a in q.filters]
+    return {"問い合わせ": q.name, "入力": [n for n, _ in q.inputs], "読む": sorted(q.reads), "条件": conds,
+            "並び": f"{q.order[0]} {q.order[1]}" if q.order else "", "先頭": q.limit or ""}
+
+
 def build(ck: Checker) -> dict:
     p = ck.p
     spec: dict = {}
@@ -50,6 +74,10 @@ def build(ck: Checker) -> dict:
             "丸め": sorted(set(info.roundings)),
         })
     spec["処理"] = procs
+    spec["問い合わせ"] = [query_rows(q) for q in p.queries]
+    spec["トリガ"] = [(tg.name, f"{k} {fmt_cause(k, key)}", d) for tg in p.triggers for k, key, d in tg.causes]
+    spec["外部作用"] = [(e.name, ", ".join(f"{n}: {show_type(t)}" for n, t in e.params)) for e in p.effects]
+    spec["出来事"] = [(ev.name, (f"各 {q}" if k == "各" else "外から"), d) for ev in p.events for k, q, d in ev.steps]
     spec["不変条件"] = [text for text, _ in ck.invariant_status]
     spec["指定"] = [(f"{x['処理']}.丸め", f"{m}({u})") for x in procs for m, u in x["丸め"]]
     spec["実現"] = [(f"{d.name}.{f.name}", phys(f.type)) for d in p.data for f in d.fields if f.type.kind in ("整数", "金額")]
@@ -70,6 +98,18 @@ def render(ck: Checker, spec: dict, name="") -> str:
     for x in spec["処理"]:
         rs = " / ".join(f"{v}→{d}" for v, d in x["結果"])
         out.append(f"| {x['処理']} | {', '.join(x['入力'])} | {', '.join(x['読む'])} | {', '.join(x['書く'])} | {rs} | {', '.join(x['外部']) or 'なし'} |")
+    if spec["問い合わせ"]:
+        out += ["", "## 問い合わせ（読むだけの処理）", "", "| 問い合わせ | ◆入力 | ◆読む | ◆条件 | ◆並び | ◆先頭 |", "|---|---|---|---|---|---|"]
+        for x in spec["問い合わせ"]:
+            out.append(f"| {x['問い合わせ']} | {', '.join(x['入力'])} | {', '.join(x['読む'])} | {', '.join(x['条件'])} | {x['並び']} | {x['先頭']} |")
+    out += ["", "## トリガ", "", "| トリガ | ◆要因 | ◆行き先 |", "|---|---|---|"]
+    out += [f"| {a} | {b} | {c} |" for a, b, c in spec["トリガ"]]
+    if spec["外部作用"]:
+        out += ["", "## 外部作用（外へ出す内容。入出力型）", "", "| 外部作用 | ◆出す内容 |", "|---|---|"]
+        out += [f"| {a} | {b} |" for a, b in spec["外部作用"]]
+    if spec["出来事"]:
+        out += ["", "## 出来事（外の出来事をきっかけに起こす処理）", "", "| 出来事 | ◆起こし方 | ◆処理 |", "|---|---|---|"]
+        out += [f"| {a} | {b} | {c} |" for a, b, c in spec["出来事"]]
     out += ["", "## 不変条件", "", "| ◆内容 | 検査の結果 |", "|---|---|"]
     for text, rows in ck.invariant_status:
         out.append(f"| {text} | " + "／".join(f"{p}: {s}" for p, s in rows) + " |")

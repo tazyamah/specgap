@@ -23,6 +23,12 @@ def tok_of(t: Type) -> str:
     k = t.kind
     if k in ("ID", "参照"):
         return "ID"
+    if k == "文字列":
+        return "Str"
+    if k == "バイト列":
+        return "Bytes"
+    if k == "日時":
+        return "Time"
     if k == "整数":
         return "Int"
     if k == "金額":
@@ -93,6 +99,9 @@ class Checker:
         self.results = {r.name: r for r in prog.results}
         self.effects = {e.name: e for e in prog.effects}
         self.procs = {x.name: x for x in prog.processes}
+        self.triggers = {x.name: x for x in prog.triggers}
+        self.queries = {x.name: x for x in prog.queries}
+        self.query_reads: dict[str, set] = {}
         self.variants = {}
         for s in prog.states:
             for v in [s.initial, *s.middle, *s.final]:
@@ -116,6 +125,10 @@ class Checker:
         for proc in self.p.processes:
             self.infos[proc.name] = ProcChecker(self, proc).run()
         self.check_flows()
+        self.check_queries()
+        self.check_triggers()
+        self.check_effect_waits()
+        self.check_events()
         self.check_states()
         self.check_invariants()
         order = {ERROR: 0, QUESTION: 1, WARN: 2}
@@ -139,8 +152,8 @@ class Checker:
                 if t.kind == "写像" and t.key not in self.data:
                     self.d(ERROR, "名前", f"{dt.name}.{f.name}", f"キーのデータ「{t.key}」が未定義です")
         for s in self.p.states:
-            if not s.initial or not s.final:
-                self.d(ERROR, "状態", f"状態 {s.name}", "初期と終了の状態は必須です")
+            if not s.initial or not (s.final or s.endless):
+                self.d(ERROR, "状態", f"状態 {s.name}", "初期と終了の状態は必須です（行き来を繰り返す状態は「終了 なし」と書きます）")
             known = {s.initial, *s.middle, *s.final}
             for a, b, _ in s.rejects:
                 for x in (a, b):
@@ -168,12 +181,173 @@ class Checker:
                 for v, dest in routes:
                     base = dest.split(" ", 1)[1] if dest.startswith("待つ ") else dest
                     if dest.startswith("待つ "):
-                        self.d(ERROR, "行き先", where, "トリガは試作の範囲外です（待つ は使えません）")
+                        self.check_wait(where, proc, base)
                     elif base != "応答" and base not in self.procs:
                         self.d(ERROR, "行き先", where, f"結果「{v}」の行き先「{base}」が未定義の処理です")
         for name in self.procs:
             if name not in in_flow:
                 self.d(WARN, "行き先", f"処理 {name}", "どのフローにも入っていません")
+
+    def check_effect_waits(self):
+        """外部作用を要求する処理は、結果を待つ経路（フローの「待つ」）を持つか、待たない理由を宣言する。
+        信頼できない先（ネットワーク・外部サービス）への永続化が、黙って失敗しっぱなしになるのを防ぐ。
+        論理的な失敗の理由（失敗 …）を宣言した外部作用は、待つ先のトリガに理由ごとの応答も要る。"""
+        waits = {}
+        for fl in self.p.flows:
+            for proc, routes in fl.entries:
+                for _, d in routes:
+                    if d.startswith("待つ "):
+                        waits.setdefault(proc, set()).add(d.split(" ", 1)[1])
+        triggers = {t.name: t for t in self.p.triggers}
+        for proc, info in self.infos.items():
+            for eff in sorted({e for e, _ in info.effects}):
+                decl = self.effects.get(eff)
+                if decl is None or decl.no_wait is not None:
+                    continue
+                if proc not in waits:
+                    self.d(ERROR, "失敗", f"処理 {proc}", f"外部作用 {eff} の失敗の扱いが決まっていません（フローで「待つ」へ進めるか、外部作用の宣言に 待たない \"人が決めた理由\" を書いてください）")
+                    continue
+                for tname in sorted(waits[proc]):
+                    tg = triggers.get(tname)
+                    answered = {key for k, key, _ in tg.causes if k == "応答"} if tg else set()
+                    for reason in decl.failures:
+                        if reason not in answered:
+                            self.d(ERROR, "失敗", f"処理 {proc}", f"外部作用 {eff} の失敗の理由「{reason}」への応答が、トリガ {tname} にありません")
+
+    def check_queries(self):
+        """問い合わせ（読むだけの処理）の検査。使う項目の型、入力との型の一致、宣言した「読む」と実際のずれ。"""
+        for q in self.p.queries:
+            where = f"問い合わせ {q.name}"
+            if q.name in self.procs:
+                self.d(ERROR, "名前", where, "同じ名前の処理があります")
+            dt = self.data.get(q.target)
+            if dt is None:
+                self.d(ERROR, "名前", where, f"対象のデータ「{q.target}」が未定義です")
+                continue
+            fields = {f.name: f for f in dt.fields}
+            used, ins = set(), dict(q.inputs)
+
+            def field_of(fn):
+                if fn not in fields:
+                    self.d(ERROR, "名前", where, f"データ {dt.name} に項目「{fn}」がありません")
+                    return None
+                used.add(f"{dt.name}.{fn}")
+                return fields[fn]
+
+            for fn, op, st in q.conds:
+                f = field_of(fn)
+                if f is not None and (f.type.kind != "名前" or st not in [x for s in self.p.states if s.name == f.type.target for x in [s.initial, *s.middle, *s.final]]):
+                    self.d(ERROR, "型", where, f"条件「{fn} {op} {st}」: 「{st}」は項目 {fn} の状態ではありません")
+            for fn, op, arg in q.filters:
+                f = field_of(fn)
+                if f is None:
+                    continue
+                if op == "直近":
+                    if f.type.kind != "日時":
+                        self.d(ERROR, "型", where, f"「{fn} 直近」は日時の項目にだけ使えます")
+                    if not any(n == "現在" for n, _ in q.refs):
+                        self.d(ERROR, "名前", where, "「直近」を使うには、参照 現在 が必要です")
+                    continue
+                t = ins.get(arg)
+                if t is None:
+                    self.d(ERROR, "名前", where, f"絞り込みの入力「{arg}」が、入力にありません")
+                    continue
+                if op == "含む" and not (f.type.kind == "文字列" and t.kind == "文字列"):
+                    self.d(ERROR, "型", where, f"「{fn} 含む {arg}」は文字列どうしにだけ使えます")
+                if op in ("以上", "以下") and not (f.type.kind == t.kind and f.type.kind in ("日時", "整数", "金額")):
+                    self.d(ERROR, "型", where, f"「{fn} {op} {arg}」は同じ種類の数・日時どうしにだけ使えます")
+            if q.order:
+                f = field_of(q.order[0])
+                if f is not None and f.type.kind not in ("日時", "整数", "金額"):
+                    self.d(ERROR, "型", where, f"並びの項目「{q.order[0]}」は数か日時である必要があります")
+            if q.limit is not None:
+                t = ins.get(q.limit)
+                if t is None or t.kind != "整数":
+                    self.d(ERROR, "型", where, f"先頭の件数「{q.limit}」は、整数の入力である必要があります")
+            for n, t in q.inputs:
+                if not t.optional and not any(n == a for _, _, a in q.filters) and n != q.limit:
+                    self.d(WARN, "宣言", where, f"入力「{n}」はどこにも使われていません")
+            declared, actual = set(q.reads), used
+            for x in sorted(actual - declared):
+                self.d(ERROR, "宣言", where, f"問い合わせは「{x}」を読むのに、宣言（読む）にありません")
+            for x in sorted(declared - actual):
+                self.d(ERROR, "宣言", where, f"宣言（読む）に「{x}」がありますが、使っていません")
+            self.query_reads[q.name] = actual
+
+    def check_wait(self, where, proc, trig):
+        tg = self.triggers.get(trig)
+        if tg is None:
+            self.d(ERROR, "トリガ", where, f"待つ 先のトリガ「{trig}」が未定義です")
+            return
+        have = {n for n, _ in self.procs[proc].inputs}
+        for n, _ in tg.params:
+            if n not in have:
+                self.d(ERROR, "トリガ", where, f"トリガ {trig} の引数「{n}」を、処理 {proc} は入力にもっていません")
+        mine = {n: show_type(t) for n, t in self.procs[proc].inputs}
+        for n, t in tg.params:
+            if n in mine and mine[n] != show_type(t):
+                self.d(ERROR, "トリガ", where, f"トリガ {trig} の引数「{n}」の型が、処理 {proc} の入力と違います")
+
+    def check_triggers(self):
+        waited = set()
+        for fl in self.p.flows:
+            for _, routes in fl.entries:
+                waited |= {d.split(" ", 1)[1] for _, d in routes if d.startswith("待つ ")}
+        names = [t.name for t in self.p.triggers]
+        for tg in self.p.triggers:
+            where = f"トリガ {tg.name}"
+            if names.count(tg.name) > 1:
+                self.d(ERROR, "トリガ", where, "同じ名前のトリガが複数あります")
+            deadlines = [key for k, key, _ in tg.causes if k == "期限"]
+            if len(deadlines) > 1:
+                self.d(ERROR, "トリガ", where, "期限が複数あります（先に起きた方が勝つので、長い方は起きません）")
+            if any(int(x) <= 0 for x in deadlines):
+                self.d(ERROR, "トリガ", where, "期限は0より長くしてください")
+            if not any(k == "期限" for k, _, _ in tg.causes):
+                self.d(ERROR, "トリガ", where, "期限がありません（待ち続けないよう、期限と期限切れの行き先が必要です）")
+            if not any(k == "応答" for k, _, _ in tg.causes):
+                self.d(WARN, "トリガ", where, "解く応答がありません（期限切れでしか終わらない待ちです）")
+            seen = set()
+            for k, key, dest in tg.causes:
+                if (k, key) in seen:
+                    self.d(ERROR, "トリガ", where, f"要因「{k} {key}」が重複しています")
+                seen.add((k, key))
+                proc = self.procs.get(dest)
+                if proc is None:
+                    self.d(ERROR, "トリガ", where, f"要因「{k} {key}」の行き先「{dest}」が未定義の処理です")
+                elif [(n, show_type(t)) for n, t in proc.inputs] != [(n, show_type(t)) for n, t in tg.params]:
+                    self.d(ERROR, "トリガ", where, f"行き先の処理 {dest} の入力（名前と型）が、トリガの引数と合いません")
+            if tg.name not in waited:
+                self.d(WARN, "トリガ", where, "どのフローからも「待つ」で作られていません")
+
+    def check_events(self):
+        """出来事の検査。「各」は、問い合わせが返すデータ1件ずつに、その識別子だけを入力にもつ処理を起こす。"""
+        names = [e.name for e in self.p.events]
+        for ev in self.p.events:
+            where = f"出来事 {ev.name}"
+            if names.count(ev.name) > 1:
+                self.d(ERROR, "名前", where, "同じ名前の出来事が複数あります")
+            if not ev.steps:
+                self.d(WARN, "出来事", where, "起こす処理がありません")
+            for kind, qn, pn in ev.steps:
+                proc = self.procs.get(pn)
+                if proc is None:
+                    self.d(ERROR, "出来事", where, f"起こす処理「{pn}」が未定義です")
+                    continue
+                if kind != "各":
+                    continue
+                q = self.queries.get(qn)
+                if q is None:
+                    self.d(ERROR, "出来事", where, f"問い合わせ「{qn}」が未定義です")
+                    continue
+                if any(not t.optional for _, t in q.inputs):
+                    self.d(ERROR, "出来事", where, f"問い合わせ {qn} は入力が要るので、出来事からは呼べません（任意の入力だけにしてください）")
+                dt = self.data.get(q.target)
+                if dt is None:
+                    continue
+                key = self.key_field(dt.name)
+                if [(n, show_type(t)) for n, t in proc.inputs] != [(key.name, "ID")]:
+                    self.d(ERROR, "出来事", where, f"「各 {qn}」は {dt.name} の {key.name} だけを渡すので、処理 {pn} の入力は「{key.name}: ID」だけにしてください")
 
     def check_states(self):
         for s in self.p.states:
@@ -190,7 +364,7 @@ class Checker:
                         continue
                     seen.add(y)
                     todo += edges.get(y, set())
-                if not (seen & set(s.final)):
+                if not s.endless and not (seen & set(s.final)):
                     self.d(WARN, "状態", f"状態 {s.name}", f"「{x}」から終了の状態へ進む処理が宣言されていません")
 
     def check_invariants(self):
@@ -346,8 +520,8 @@ class ProcChecker:
                 else:
                     self.d(ERROR, "型", "「ある／ない」はデータの参照 D[…] にだけ使えます")
             else:
-                if self.ty(e.e, env) != "Set":
-                    self.d(ERROR, "型", f"「{show(e.e)}」は集合ではありません")
+                if self.ty(e.e, env) not in ("Set", "Str"):
+                    self.d(ERROR, "型", f"「{show(e.e)}」は集合でも文字列でもありません")
             return "Bool"
         if isinstance(e, Bin):
             return self.binop(e, env)
@@ -411,9 +585,13 @@ class ProcChecker:
         if "?" in (a, b):
             return "?"
         num = ("Int", "Money")
+        if e.op == "かつ":
+            if a != "Bool" or b != "Bool":
+                self.d(ERROR, "型", f"「{show(e)}」: かつ の両側は条件である必要があります")
+            return "Bool"
         if e.op in ("<", ">", "<=", ">="):
-            if a not in num or b not in num:
-                self.d(ERROR, "型", f"「{show(e)}」: 数どうしで比べてください")
+            if not ((a in num and b in num) or (a == "Time" and b == "Time")):
+                self.d(ERROR, "型", f"「{show(e)}」: 数どうし（または日時どうし）で比べてください")
             return "Bool"
         if e.op in ("==", "!="):
             if a != b and not (a in num and b in num):
@@ -529,6 +707,7 @@ class ProcChecker:
                 self.d(ERROR, "名前", f"データ {data} に項目「{st.f}」がありません", st.line)
                 return
             self.ty(st.e)
+            self.check_range_fit(st.e, fld.type, f"{data}.{st.f}", st.line)
             info.writes.add(f"{data}.{st.f}")
             info.write_list.append(f"{data}.{st.f}")
             if fld.type.kind == "名前" and isinstance(st.e, Name):
@@ -538,6 +717,16 @@ class ProcChecker:
             self.create(st)
         elif isinstance(st, Request):
             self.request(st)
+        elif isinstance(st, ForEach):
+            env2 = self.bind(st.binder)
+            saved = self.env
+            self.env = env2
+            for inner in st.body:
+                if isinstance(inner, Request) or (isinstance(inner, Assign) and isinstance(inner.e, Index)):
+                    self.stmt(inner, pos)
+                else:
+                    self.d(ERROR, "型", "各 … { } の中に書けるのは、データを引く文と、要求だけです", st.line)
+            self.env = saved
 
     def check_transition(self, data, fname, dst, line):
         sname = next(f.type.target for f in self.ck.data[data].fields if f.name == fname)
@@ -552,6 +741,22 @@ class ProcChecker:
         for x, y, why in self.ck.states[sname].rejects:
             if y == dst and any(a == x for a, _ in decl):
                 self.d(ERROR, "遷移", f"拒否された遷移 {x} → {y}（{why}）を行っています", line)
+
+    def check_range_fit(self, e, dst: Type, where: str, line: int):
+        """入力をそのまま項目へ入れるとき、入力の範囲が項目の範囲に収まるか。"""
+        src = next((t for n, t in self.proc.inputs if isinstance(e, Name) and n == e.n), None)
+        if src is None:
+            return
+        if src.kind == "写像" and dst.kind == "写像":
+            src, dst = src.value, dst.value
+        if src.kind not in ("整数", "金額", "割合") or src.kind != dst.kind:
+            return
+        s, d = src.range or Range(), dst.range or Range()
+        lo_ng = d.lo is not None and (s.lo is None or s.lo < d.lo)
+        hi_ng = d.hi is not None and (s.hi is None or s.hi > d.hi)
+        if lo_ng or hi_ng:
+            self.d(ERROR, "範囲", f"{where} に、範囲の広い入力「{e.n}」を入れています"
+                   f"（入力{show_range(src.range).strip() or '制限なし'} ／ 項目{show_range(dst.range).strip()}）。収まるか確認が要ります", line)
 
     def create(self, st: Create):
         ck, info = self.ck, self.info
@@ -576,6 +781,7 @@ class ProcChecker:
                 self.d(QUESTION, "丸め", "端数が出る値を、丸めずに書いています", st.line)
             elif vt != tok_of(f.type) and not (vt in ("Int", "Money") and tok_of(f.type) in ("Int", "Money")) and vt != "?":
                 self.d(ERROR, "型", f"{st.data}.{n} に型の違う値（{vt}）を入れています", st.line)
+            self.check_range_fit(e, f.type, f"{st.data}.{n}", st.line)
             if f.type.kind == "名前" and isinstance(e, Name):
                 self.check_transition_new(st.data, n, e.n, st.line)
         info.writes.add(st.data)
