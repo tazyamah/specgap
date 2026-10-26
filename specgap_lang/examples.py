@@ -17,8 +17,17 @@ class ExampleError(Exception):
 def lit(t: Type, text: str, ck: Checker) -> str:
     text = text.strip()
     k = t.kind
-    if k in ("ID", "参照"):
+    if k in ("ID", "参照", "文字列"):
         return f'"{text}".to_string()'
+    if k == "日時":
+        if not text.lstrip("-").isdigit():
+            raise ExampleError(f"日時は秒の数で書きます（「{text}」）")
+        return f"{text}i64"
+    if k == "集合":
+        if not (text.startswith("{") and text.endswith("}")):
+            raise ExampleError(f"集合は {{要素, …}} で書きます（「{text}」）")
+        items = [x.strip() for x in split_top(text[1:-1], ",")]
+        return "BTreeSet::from([" + ", ".join(f'"{x}".to_string()' for x in items) + "])"
     if k in ("整数", "金額"):
         if not text.lstrip("-").isdigit():
             raise ExampleError(f"数のはずが「{text}」です")

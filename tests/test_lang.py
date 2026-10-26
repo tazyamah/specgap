@@ -281,3 +281,38 @@ def test_台帳から出したplanの表は突合の対象にならない():
     led = iv.new_ledger("メモ")
     led["usecases"].append({"id": "UC1", "goal": "書く", "main": ["書く"]})
     assert read_plan(iv.render(led)) == {}
+
+
+# ---- ひとり用つぶやき（会話から起こした計画書とコード） ----
+TW = EX / "solo_tweet"
+TW_CODE = (TW / "solo_tweet.sgl").read_text()
+TW_PLAN = (TW / "plan_spec.md").read_text()
+
+
+def test_つぶやきの検査は通り_計画と静的に一致する():
+    ck = chk(TW_CODE)
+    assert ck.ok, [str(d) for d in ck.diags]
+    fs = compare_static(build(ck), read_plan(TW_PLAN))
+    assert [f for f in fs if f.kind != "未規定"] == []
+
+
+def test_つぶやきの生成物はコミットしたものと一致する():
+    committed = TW / "rust" / "src" / "lib.rs"
+    assert committed.read_text() == generate(chk(TW_CODE)), "python -m specgap_lang rust で作り直してください"
+
+
+@needs_cargo
+def test_つぶやきの具体例を動かすと計画と一致する(tmp_path):
+    ck = chk(TW_CODE)
+    rows = read_plan(TW_PLAN)["具体例"]
+    src, problems = runner_source(ck, rows)
+    assert [p for p in problems if p.kind != "未規定"] == []
+    write_crate(ck, generate(ck), src, tmp_path)
+    assert compare_examples(rows, run_crate(tmp_path)) == []
+
+
+def test_つぶやきの削除猶予は30秒で_書込待ちは24時間():
+    spec = build(chk(TW_CODE))
+    assert ("削除猶予", "期限 現在+30秒", "完全に消す") in spec["トリガ"]
+    assert ("書込待ち", "期限 現在+24時間", "未反映の通知") in spec["トリガ"]
+

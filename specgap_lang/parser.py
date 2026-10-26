@@ -146,6 +146,8 @@ class Parser:
             if self.accept("の集合"):
                 return Type("集合", value=Type("ID"))
             return Type("ID")
+        if tok in ("文字列", "日時"):
+            return Type(tok)
         if tok in ("整数", "割合"):
             return Type(tok, range=self.range_opt())
         if tok == "金額":
@@ -355,6 +357,12 @@ class Parser:
 
     # ---- 式 ----
     def expr(self):
+        l = self.cmp_expr()
+        while self.accept("かつ"):
+            l = Bin("かつ", l, self.cmp_expr())
+        return l
+
+    def cmp_expr(self):
         l = self.add()
         if self.peek().kind == "OP" and self.peek().val in CMP:
             op = self.next().val

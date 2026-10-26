@@ -64,8 +64,10 @@ pub struct トリガ定義 {
 
 def rust_type(t: Type) -> str:
     k = t.kind
-    if k in ("ID", "参照"):
+    if k in ("ID", "参照", "文字列"):
         return "String"
+    if k == "日時":
+        return "i64"
     if k in ("整数", "金額"):
         return phys(t)
     if k == "割合":
@@ -264,7 +266,7 @@ class ProcGen:
     def wrap(self, tok, x):
         if tok in ("Int", "Money"):
             return f"({x} as i128)"
-        if tok in ("ID",) or tok.startswith("Map:") or tok == "Set":
+        if tok in ("ID", "Str") or tok.startswith("Map:") or tok == "Set":
             return f"{x}.clone()"
         return x
 
@@ -310,7 +312,7 @@ class ProcGen:
             l, r = self.rx(e.l), self.rx(e.r)
             if e.op == "*" and "Ratio" in (lt, rt):
                 return f"積({r}, {l})" if lt == "Ratio" else f"積({l}, {r})"
-            op = "==" if e.op == "==" else e.op
+            op = {"かつ": "&&"}.get(e.op, e.op)
             return f"({l} {op} {r})"
         if isinstance(e, (SetB, SumE)):
             return self.builder(e)
@@ -384,7 +386,7 @@ class ProcGen:
                 self.scope[st.name] = ("local", f"Rec:{d}")
             else:
                 tok = self.tok(st.e)
-                ty = {"Int": "i128", "Money": "i128", "Rational": "有理", "ID": "String", "Set": "BTreeSet<String>"}[tok]
+                ty = {"Int": "i128", "Money": "i128", "Rational": "有理", "ID": "String", "Str": "String", "Time": "i64", "Set": "BTreeSet<String>"}[tok]
                 self.L(f"let {st.name}: {ty} = {self.rx(st.e)};")
                 self.scope[st.name] = ("local", tok)
         elif isinstance(st, Update):

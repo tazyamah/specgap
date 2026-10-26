@@ -43,6 +43,12 @@ python -m specgap_lang interview render 台帳.json -o plan.md  # plan（①）�
 
 会話の進め方は `skills/plan-interview/SKILL.md`（Cockburn のユースケースを一問一答で聞く。付加情報は仕分け、コードを書く前に動作要件 R1〜R7 を聞く）。台帳は plan の元で、コードから作らない。暫定の Python 実装。
 
+## 会話から起こした2つ目の例（ひとり用つぶやき）
+
+`lang_examples/solo_tweet/`：会話の台帳（ledger.json、判断J1〜J48）→ 計画書の節1〜7（plan_spec.md）→ コード（solo_tweet.sgl）→ 検査・突合・Rust生成（rust/）。
+計画書とコードは機械で突合し、具体例19件を生成した Rust で実行して一致を確かめています（`python -m specgap_lang compare lang_examples/solo_tweet/solo_tweet.sgl lang_examples/solo_tweet/plan_spec.md`）。
+この例のために、型に「文字列」「日時」、条件に「かつ」を足しました。一覧を見る・探すなどの読むだけの処理は、問い合わせの書き方がまだ無く、コードにしていません。
+
 ## 検査が見つけるもの
 
 | 書き方 | 検査の結果 |

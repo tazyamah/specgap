@@ -248,8 +248,8 @@ def show_range(r: Optional[Range]) -> str:
 
 def show_type(t: Type) -> str:
     k = t.kind
-    if k == "ID":
-        return "ID"
+    if k in ("ID", "文字列", "日時"):
+        return k
     if k == "整数":
         return "整数" + show_range(t.range)
     if k == "割合":

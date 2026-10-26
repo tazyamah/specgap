@@ -23,6 +23,10 @@ def tok_of(t: Type) -> str:
     k = t.kind
     if k in ("ID", "参照"):
         return "ID"
+    if k == "文字列":
+        return "Str"
+    if k == "日時":
+        return "Time"
     if k == "整数":
         return "Int"
     if k == "金額":
@@ -394,8 +398,8 @@ class ProcChecker:
                 else:
                     self.d(ERROR, "型", "「ある／ない」はデータの参照 D[…] にだけ使えます")
             else:
-                if self.ty(e.e, env) != "Set":
-                    self.d(ERROR, "型", f"「{show(e.e)}」は集合ではありません")
+                if self.ty(e.e, env) not in ("Set", "Str"):
+                    self.d(ERROR, "型", f"「{show(e.e)}」は集合でも文字列でもありません")
             return "Bool"
         if isinstance(e, Bin):
             return self.binop(e, env)
@@ -459,9 +463,13 @@ class ProcChecker:
         if "?" in (a, b):
             return "?"
         num = ("Int", "Money")
+        if e.op == "かつ":
+            if a != "Bool" or b != "Bool":
+                self.d(ERROR, "型", f"「{show(e)}」: かつ の両側は条件である必要があります")
+            return "Bool"
         if e.op in ("<", ">", "<=", ">="):
-            if a not in num or b not in num:
-                self.d(ERROR, "型", f"「{show(e)}」: 数どうしで比べてください")
+            if not ((a in num and b in num) or (a == "Time" and b == "Time")):
+                self.d(ERROR, "型", f"「{show(e)}」: 数どうし（または日時どうし）で比べてください")
             return "Bool"
         if e.op in ("==", "!="):
             if a != b and not (a in num and b in num):

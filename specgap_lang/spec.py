@@ -8,7 +8,7 @@ def fmt_cause(kind: str, key: str) -> str:
         return key
     s = int(key)
     for unit, sec in (("日", 86400), ("時間", 3600), ("分", 60)):
-        if s % sec == 0:
+        if s % sec == 0 and not (unit == "日" and s < 2 * 86400):  # 24時間は「1日」でなく「24時間」と書く
             return f"現在+{s // sec}{unit}"
     return f"現在+{s}秒"
 
