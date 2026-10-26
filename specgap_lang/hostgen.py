@@ -73,6 +73,30 @@ pub fn js_str(s: &str) -> String {
         c if (c as u32) < 0x20 => o.push_str(&format!("\\u{:04x}", c as u32)), c => o.push(c) } }
     o.push('"'); o
 }
+const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+pub fn b64_encode(b: &[u8]) -> String {
+    let mut o = String::with_capacity((b.len() + 2) / 3 * 4);
+    for c in b.chunks(3) {
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        o.push(B64[(n >> 18) as usize & 63] as char);
+        o.push(B64[(n >> 12) as usize & 63] as char);
+        o.push(if c.len() > 1 { B64[(n >> 6) as usize & 63] as char } else { '=' });
+        o.push(if c.len() > 2 { B64[n as usize & 63] as char } else { '=' });
+    }
+    o
+}
+pub fn b64_decode(s: &str) -> Result<Vec<u8>, String> {
+    let mut o = Vec::with_capacity(s.len() / 4 * 3);
+    let (mut n, mut k) = (0u32, 0);
+    for ch in s.bytes() {
+        if ch == b'=' { break; }
+        let v = B64.iter().position(|&x| x == ch).ok_or("バイト列の符号化が不正です")? as u32;
+        n = n << 6 | v; k += 1;
+        if k == 4 { o.extend([(n >> 16) as u8, (n >> 8) as u8, n as u8]); n = 0; k = 0; }
+    }
+    if k == 2 { o.push((n >> 4) as u8); } else if k == 3 { o.extend([(n >> 10) as u8, (n >> 2) as u8]); }
+    Ok(o)
+}
 pub fn js_set(s: &BTreeSet<String>) -> String { format!("[{}]", s.iter().map(|x| js_str(x)).collect::<Vec<_>>().join(",")) }
 pub fn js_arr(v: &[String]) -> String { format!("[{}]", v.iter().map(|x| js_str(x)).collect::<Vec<_>>().join(",")) }
 '''
@@ -87,6 +111,8 @@ def from_j(t: Type, j: str) -> str:
         return f'{phys(t)}::try_from({j}.as_int()?).map_err(|_| "範囲外の数です".to_string())?'
     if k == "日時":
         return f"({j}.as_int()? as i64)"
+    if k == "バイト列":
+        return f"b64_decode({j}.as_str()?)?"
     if k == "集合":
         return f"{j}.as_set()?"
     if k == "名前":
@@ -103,6 +129,8 @@ def to_j(t: Type, x: str) -> str:
         return f"js_str(&{x})"
     if k in ("整数", "金額", "日時"):
         return f"{x}.to_string()"
+    if k == "バイト列":
+        return f"js_str(&b64_encode(&{x}))"
     if k == "集合":
         return f"js_set(&{x})"
     if k == "名前":

@@ -188,8 +188,8 @@ dialog label { display: block; margin: 8px 0; }
   const draft = { 添付: [], リンク: [] };
   const sendBtn = $('#send-btn') || $('#btn-send');
   const partsHtml = (ids, closeAttr) => ids.map((id) => {
-    const p = engine.state.部品[id] || {};
-    const label = p.種類 === 'link' ? p.url : p.名前;
+    const a = engine.添付の表示(id);
+    const label = a ? a.名前 : engine.リンクの先(id);
     return `<span class="c">${esc(label || id)}<button class="ghost" ${closeAttr}="${id}" aria-label="外す">×</button></span>`;
   }).join('');
   function renderDraft() {
@@ -225,16 +225,20 @@ dialog label { display: block; margin: 8px 0; }
   }
   async function addFiles(files) {
     const ids = [];
-    for (const f of files) ids.push(engine.部品を足す({ 種類: 'file', 名前: f.name, dataURL: await readImage(f) }));
+    for (const f of files) {
+      const url = await readImage(f);
+      const m = /^data:([^;]*);base64,(.*)$/.exec(url);
+      ids.push(await engine.添付を足す(f.name, m[1], m[2]));
+    }
     return ids;
   }
   $('#btn-attach').onclick = () => $('#file').click();
   $('#file').onchange = async (e) => { draft.添付.push(...await addFiles([...e.target.files])); e.target.value = ''; renderDraft(); };
   $('#btn-link').onclick = () => { $('#link-row').classList.toggle('hidden'); $('#link-url').focus(); };
-  $('#btn-link-add').onclick = () => {
+  $('#btn-link-add').onclick = async () => {
     const u = $('#link-url').value.trim();
     if (!u) return;
-    draft.リンク.push(engine.部品を足す({ 種類: 'link', url: u }));
+    draft.リンク.push(await engine.リンクを付ける(u));
     $('#link-url').value = ''; $('#link-row').classList.add('hidden'); renderDraft();
   };
   let hintTimer;
@@ -253,8 +257,8 @@ dialog label { display: block; margin: 8px 0; }
   // ---- 見る（一覧） ----
   let count = 20, editing = null;
   function postHtml(p, withActs) {
-    const thumbs = p.添付.map((id) => { const x = engine.state.部品[id]; return x && x.dataURL ? `<img src="${x.dataURL}" alt="${esc(x.名前 || '添付')}">` : ''; }).join('');
-    const links = p.リンク.map((id) => { const x = engine.state.部品[id]; return x ? `<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.url)}</a>` : ''; }).join('');
+    const thumbs = p.添付.map((id) => { const x = engine.添付の表示(id); return x ? `<img src="${x.dataURL}" alt="${esc(x.名前 || '添付')}">` : ''; }).join('');
+    const links = p.リンク.map((id) => { const u = engine.リンクの先(id); return u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(u)}</a>` : ''; }).join('');
     const pend = p.記録 === '端末保存済' ? '<span class="badge" title="まだDropboxに記録していません">反映前</span>' : '';
     return `<article class="card post" data-id="${p.投稿ID}">
       <div class="meta"><time>${fmt(p.書いた日時)}</time>${pend}</div>
@@ -264,7 +268,7 @@ dialog label { display: block; margin: 8px 0; }
     </article>`;
   }
   function editHtml(p) {
-    const th = editing.添付.map((id) => { const x = engine.state.部品[id]; return `<span class="x">${x && x.dataURL ? `<img src="${x.dataURL}" alt="">` : esc(id)}<button data-ex="${id}" aria-label="外す">×</button></span>`; }).join('');
+    const th = editing.添付.map((id) => { const x = engine.添付の表示(id); return `<span class="x">${x ? `<img src="${x.dataURL}" alt="">` : esc(id)}<button data-ex="${id}" aria-label="外す">×</button></span>`; }).join('');
     return `<article class="card post editing" data-id="${p.投稿ID}">
       <textarea data-e="text" aria-label="本文を直す">${esc(editing.text)}</textarea>
       <div class="thumbs">${th}</div><div class="chips">${partsHtml(editing.リンク, 'data-el')}</div>
@@ -309,7 +313,7 @@ dialog label { display: block; margin: 8px 0; }
     else if (act === 'e-link') card.querySelector('[data-e="link-row"]').classList.toggle('hidden');
     else if (act === 'e-link-add') {
       const u = card.querySelector('[data-e="link-url"]').value.trim();
-      if (u) { editing.text = card.querySelector('[data-e="text"]').value; editing.リンク.push(engine.部品を足す({ 種類: 'link', url: u })); renderList(); }
+      if (u) { editing.text = card.querySelector('[data-e="text"]').value; editing.リンク.push(await engine.リンクを付ける(u)); renderList(); }
     } else if (act === 'e-save') {
       const text = card.querySelector('[data-e="text"]').value.trim();
       if (!text && !editing.添付.length && !editing.リンク.length) { card.querySelector('[data-e="hint"]').classList.remove('hidden'); return; }

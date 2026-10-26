@@ -37,6 +37,7 @@ pub fn 範囲内(名: &str, x: i128, lo: Option<i128>, hi: Option<i128>) -> i128
     範囲検査(名, x, lo, hi).expect("範囲の宣言に反する値を書こうとした");
     x
 }
+pub fn バイト列表示(b: &[u8]) -> String { format!("0x{}", b.iter().map(|x| format!("{:02x}", x)).collect::<String>()) }
 pub fn 集合表示(s: &BTreeSet<String>) -> String {
     format!("{{{}}}", s.iter().cloned().collect::<Vec<_>>().join(","))
 }

@@ -25,6 +25,8 @@ def tok_of(t: Type) -> str:
         return "ID"
     if k == "文字列":
         return "Str"
+    if k == "バイト列":
+        return "Bytes"
     if k == "日時":
         return "Time"
     if k == "整数":

@@ -19,6 +19,11 @@ def lit(t: Type, text: str, ck: Checker) -> str:
     k = t.kind
     if k in ("ID", "参照", "文字列"):
         return f'"{text}".to_string()'
+    if k == "バイト列":
+        h = text[2:] if text.startswith("0x") else None
+        if h is None or len(h) % 2 or any(c not in "0123456789abcdefABCDEF" for c in h):
+            raise ExampleError(f"バイト列は 0x に続く16進数で書きます（「{text}」）")
+        return "vec![" + ", ".join(f"0x{h[i:i + 2]}u8" for i in range(0, len(h), 2)) + "]"
     if k == "日時":
         if not text.lstrip("-").isdigit():
             raise ExampleError(f"日時は秒の数で書きます（「{text}」）")

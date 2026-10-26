@@ -42,6 +42,7 @@ pub fn 範囲内(名: &str, x: i128, lo: Option<i128>, hi: Option<i128>) -> i128
     範囲検査(名, x, lo, hi).expect("範囲の宣言に反する値を書こうとした");
     x
 }
+pub fn バイト列表示(b: &[u8]) -> String { format!("0x{}", b.iter().map(|x| format!("{:02x}", x)).collect::<String>()) }
 pub fn 集合表示(s: &BTreeSet<String>) -> String {
     format!("{{{}}}", s.iter().cloned().collect::<Vec<_>>().join(","))
 }
@@ -68,6 +69,8 @@ def rust_type(t: Type) -> str:
         return "String"
     if k == "日時":
         return "i64"
+    if k == "バイト列":
+        return "Vec<u8>"
     if k in ("整数", "金額"):
         return phys(t)
     if k == "割合":
@@ -90,6 +93,8 @@ def show_expr(t: Type, x: str) -> str:
         return f"写像表示(&{x})"
     if k == "集合":
         return f"集合表示(&{x})"
+    if k == "バイト列":
+        return f"バイト列表示(&{x})"
     return x
 
 
@@ -263,7 +268,8 @@ class Gen:
             names = [n for n, _ in e.params]
             pat = ", ".join(names)
             fmt = ", ".join("{}" for _ in names)
-            self.w(f'            外部作用::{e.name.replace(".", "_")} {{ {pat}, 冪等キー }} => format!("{e.name}({fmt}, 冪等キー={{}})", {pat}, 冪等キー),')
+            shown = ", ".join(show_expr(t, n) for n, t in e.params)
+            self.w(f'            外部作用::{e.name.replace(".", "_")} {{ {pat}, 冪等キー }} => format!("{e.name}({fmt}, 冪等キー={{}})", {shown}, 冪等キー),')
         self.w("        }\n    }\n}\n")
 
     def results(self):
@@ -340,7 +346,7 @@ class ProcGen:
     def wrap(self, tok, x):
         if tok in ("Int", "Money"):
             return f"({x} as i128)"
-        if tok in ("ID", "Str") or tok.startswith("Map:") or tok == "Set":
+        if tok in ("ID", "Str", "Bytes") or tok.startswith("Map:") or tok == "Set":
             return f"{x}.clone()"
         return x
 
@@ -522,6 +528,8 @@ class ProcGen:
         g.w("}")
         g.w(f"impl {n}入力 {{\n    /// 外部から取り込むときの、範囲の宣言の検査\n    pub fn 検査(&self) -> Result<(), String> {{")
         for name, t in proc.inputs:
+            if t.kind == "バイト列" and t.range:
+                g.w(f'        範囲検査("{name}の長さ", self.{name}.len() as i128, {opt(t.range.lo)}, {opt(t.range.hi)})?;')
             if t.kind in ("整数", "金額") and t.range:
                 g.w(f'        範囲検査("{name}", self.{name} as i128, {opt(t.range.lo)}, {opt(t.range.hi)})?;')
             if t.kind == "写像" and t.value.kind in ("整数", "金額") and t.value.range:

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from specgap_lang.ast import show_type
 from specgap_lang.check import ERROR, QUESTION, check
 from specgap_lang.examples import HOST_MOD, compare_examples, run_crate, runner_source, write_crate
 from specgap_lang.hostgen import host_source
@@ -381,3 +382,25 @@ def test_行き来を繰り返す状態は_終了なし_と書く():
     assert chk(TW_CODE).ok
     ck = chk(mutate(TW_CODE, "  中間 記録済\n  終了 なし\n", "  中間 記録済\n"))
     assert any("終了" in m for m in msgs(ck, ERROR))
+
+
+# ---- バイト列と、外部作用が外へ出す内容 ----
+def test_バイト列は長さの範囲を持ち_入力の検査で範囲外を止める(tmp_path):
+    ck = chk(TW_CODE)
+    assert ck.ok
+    assert "バイト列 1..20000000" in "\n".join(f"{f.name}: {show_type(f.type)}" for f in ck.data["添付ファイル"].fields)
+    lib = generate(ck)
+    assert "pub 中身: Vec<u8>" in lib
+    assert '範囲検査("中身の長さ"' in lib
+
+
+def test_外部作用の出す内容が計画とずれたら見つかる():
+    spec = build(chk(TW_CODE))
+    assert ("Dropbox.ファイルを書く", "添付ID: ID, 名前: 文字列, 種類: 文字列, 中身: バイト列") in spec["外部作用"]
+    plan = TW_PLAN.replace("| EF4 | Dropbox.リンクを書く | リンクID: ID, 先: 文字列 |", "| EF4 | Dropbox.リンクを書く | リンクID: ID |")
+    assert plan != TW_PLAN
+    fs = compare_static(spec, read_plan(plan))
+    assert any("外部作用" in f.where for f in fs)
+    # コードの側で項目を足したのに計画が古いと、具体例の実行でも見つかる
+    ck = chk(mutate(TW_CODE, "外部作用 Dropbox.消す(投稿ID: ID)", "外部作用 Dropbox.消す(投稿ID: ID, 理由: 文字列)"))
+    assert any("Dropbox.消す" in f.where for f in compare_static(build(ck), read_plan(TW_PLAN)))

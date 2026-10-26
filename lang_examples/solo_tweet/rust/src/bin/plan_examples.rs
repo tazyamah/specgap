@@ -572,4 +572,32 @@ fn main() {
             }
         }
     }
+    {
+        let mut 保存 = 保存::default();
+        let ctx = 添付する文脈 { 新添付ファイルID: "F1".to_string() };
+        let 入力 = 添付する入力 { 名前: "a.png".to_string(), 種類: "image/png".to_string(), 中身: vec![0x89u8, 0x50u8, 0x4eu8, 0x47u8] };
+        match 入力.検査() {
+            Err(e) => println!("EX41\t入力不正({})\t\t", e),
+            Ok(()) => {
+                let 出力 = 添付する(&ctx, &保存, &入力);
+                let 前 = 保存.clone();
+                保存.適用(出力.書込.clone());
+                println!("EX41\t{}\t{}\t{}", 出力.結果.表示(), 前.差分(&保存).join(";"), 出力.外部.iter().map(|e| e.表示()).collect::<Vec<_>>().join(";"));
+            }
+        }
+    }
+    {
+        let mut 保存 = 保存::default();
+        let ctx = リンクを付ける文脈 { 新添付リンクID: "L1".to_string() };
+        let 入力 = リンクを付ける入力 { 先: "https://example.com".to_string() };
+        match 入力.検査() {
+            Err(e) => println!("EX42\t入力不正({})\t\t", e),
+            Ok(()) => {
+                let 出力 = リンクを付ける(&ctx, &保存, &入力);
+                let 前 = 保存.clone();
+                保存.適用(出力.書込.clone());
+                println!("EX42\t{}\t{}\t{}", 出力.結果.表示(), 前.差分(&保存).join(";"), 出力.外部.iter().map(|e| e.表示()).collect::<Vec<_>>().join(";"));
+            }
+        }
+    }
 }

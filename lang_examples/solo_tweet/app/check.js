@@ -87,12 +87,26 @@ const post = async (page, t) => {
     await page.waitForTimeout(1100);
     await page.evaluate(() => {
       const id = [...window.mock.posts.keys()].pop();
-      window.mock.他端末で直す(id, '別の端末でリンクも直した', window.engine.now(), { リンク: ['lzz'], リンク先: { lzz: 'https://example.org/x' } });
+      window.mock.他端末でリンクを足す('lzz', 'https://example.org/x');
+      window.mock.他端末で直す(id, '別の端末でリンクも直した', window.engine.now(), { リンク: ['lzz'] });
     });
     await page.waitForTimeout(1100); // 直しの時刻より後に、更新するように
     await page.click('#btn-refresh');
     await page.waitForSelector('#list .post .links a[href="https://example.org/x"]');
     ok('別の端末で直したリンク（添付も同じ）を取り込む');
+    // 別の端末が付けた画像（バイト列）も取り込む
+    await page.evaluate(() => {
+      const t = window.engine.now();
+      window.mock.files.set('fzz', { 名前: 'x.png', 種類: 'image/png', 中身: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' });
+      window.mock.他端末で書く({ 投稿ID: 'xpic', 本文: '画像つき（別の端末）', 添付: ['fzz'], リンク: [], 書いた日時: t, 最後に操作した日時: t });
+    });
+    await page.click('#btn-refresh');
+    await page.waitForSelector('#list .post .thumbs img[alt="x.png"]');
+    ok('別の端末が付けた画像（バイト列）を取り込んで、サムネイルに出す');
+    await page.evaluate(() => window.mock.他端末で消す('xpic'));
+    await page.waitForTimeout(1100);
+    await page.click('#btn-refresh');
+    await page.waitForFunction(() => !document.body.textContent.includes('画像つき（別の端末）'));
     await page.click('#d-other-del');
     await page.waitForTimeout(1500); // 消えたことに気づく時刻が、直しの時刻より後になるように
     await page.click('#btn-refresh');
@@ -159,7 +173,7 @@ const post = async (page, t) => {
     await post(page, '');
     await page.waitForSelector('#list .post .thumbs img');
     assert.ok(await page.isVisible('#list .post .links a'));
-    assert.ok(await page.evaluate(() => [...window.mock.files.keys()].length === 1)); ok('文字なしでも画像とリンクだけで投稿でき、サムネイルが出てDropboxへ画像も上がる');
+    assert.ok(await page.evaluate(() => [...window.mock.files.keys()].filter((k) => k !== 'fzz').length === 1 && [...window.mock.links.keys()].length >= 1)); ok('文字なしでも画像とリンクだけで投稿でき、サムネイルが出てDropboxへ画像も上がる');
 
     assert.deepStrictEqual(errors, []); ok('画面のエラーは出ていない');
     await ctx.close();

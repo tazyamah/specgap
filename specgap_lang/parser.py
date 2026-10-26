@@ -152,6 +152,8 @@ class Parser:
             return Type("ID")
         if tok in ("文字列", "日時"):
             return Type(tok)
+        if tok == "バイト列":  # 範囲は長さ（バイト数）
+            return Type(tok, range=self.range_opt())
         if tok in ("整数", "割合"):
             return Type(tok, range=self.range_opt())
         if tok == "金額":

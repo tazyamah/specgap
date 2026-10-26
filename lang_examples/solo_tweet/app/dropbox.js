@@ -10,7 +10,8 @@
   class MockDropbox {
     constructor() {
       this.posts = new Map(); // id -> {rev, json}
-      this.files = new Map(); // id -> {name, dataURL}
+      this.files = new Map(); // id -> {名前, 種類, 中身(base64)}
+      this.links = new Map(); // id -> {先}
       this.rev = 0;
       this.offline = false; // 圏外のふり
       this.failNext = 0; // 次の書き込みを失敗させる回数（原因つき）
@@ -27,8 +28,10 @@
       return rev;
     }
     async deletePost(id) { this.確かめる(); this.posts.delete(id); }
-    async putFile(id, name, dataURL) { this.確かめる(); this.files.set(id, { name, dataURL }); }
-    async getFile(id) { this.確かめる(); const f = this.files.get(id); if (!f) throw new Error('見つかりません'); return f.dataURL; }
+    async putFile(id, 名前, 種類, 中身) { this.確かめる(); this.files.set(id, { 名前, 種類, 中身 }); }
+    async getFile(id) { this.確かめる(); const f = this.files.get(id); if (!f) throw new Error('見つかりません'); return f; }
+    async putLink(id, 先) { this.確かめる(); this.links.set(id, { 先 }); }
+    async getLink(id) { this.確かめる(); const l = this.links.get(id); if (!l) throw new Error('見つかりません'); return l; }
 
     // 別の端末のふり（確認用）
     他端末で書く(obj) {
@@ -43,6 +46,7 @@
       this.posts.set(id, { rev: 'r' + (++this.rev), json: JSON.stringify(o) });
       return true;
     }
+    他端末でリンクを足す(id, 先) { this.links.set(id, { 先 }); }
     他端末で消す(id) { return this.posts.delete(id); }
   }
 
@@ -99,21 +103,22 @@
     async getPost(id) { return JSON.parse(await (await this.download(this.base + '/posts/' + id + '.json')).text()); }
     async putPost(id, obj) { return this.upload(this.base + '/posts/' + id + '.json', new TextEncoder().encode(JSON.stringify(obj, null, 1))); }
     async deletePost(id) { await this.json('files/delete_v2', { path: this.base + '/posts/' + id + '.json' }, '無くてよい'); }
-    async putFile(id, name, dataURL) {
-      const m = /^data:([^;]*);base64,(.*)$/.exec(dataURL);
-      const bin = atob(m[2]);
+    async putFile(id, 名前, 種類, 中身) {
+      const bin = atob(中身);
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       await this.upload(this.base + '/files/' + id, bytes);
-      await this.upload(this.base + '/files/' + id + '.meta', new TextEncoder().encode(JSON.stringify({ 名前: name, 種類: m[1] })));
+      await this.upload(this.base + '/files/' + id + '.meta', new TextEncoder().encode(JSON.stringify({ 名前, 種類 })));
     }
     async getFile(id) {
       const meta = JSON.parse(await (await this.download(this.base + '/files/' + id + '.meta')).text());
       const buf = new Uint8Array(await (await this.download(this.base + '/files/' + id)).arrayBuffer());
       let s = '';
       for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
-      return 'data:' + meta.種類 + ';base64,' + btoa(s);
+      return { 名前: meta.名前, 種類: meta.種類, 中身: btoa(s) };
     }
+    async putLink(id, 先) { await this.upload(this.base + '/links/' + id + '.json', new TextEncoder().encode(JSON.stringify({ 先 }))); }
+    async getLink(id) { return JSON.parse(await (await this.download(this.base + '/links/' + id + '.json')).text()); }
   }
 
   const api = { MockDropbox, RealDropbox };

@@ -279,6 +279,8 @@ def show_type(t: Type) -> str:
     k = t.kind
     if k in ("ID", "文字列", "日時"):
         return k
+    if k == "バイト列":
+        return "バイト列" + show_range(t.range)
     if k == "整数":
         return "整数" + show_range(t.range)
     if k == "割合":

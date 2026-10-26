@@ -13,7 +13,7 @@
     setItem(k, v) { this.m.set(k, String(v)); }
   }
 
-  const 新しい状態 = () => ({ 保存: {}, 待ち: [], 再送書く: [], 再送消す: [], 部品: {}, 改訂: {}, 通知: [] });
+  const 新しい状態 = () => ({ 保存: {}, 待ち: [], 再送: [], 改訂: {} });
 
   class Engine {
     static async create(opts) {
@@ -167,64 +167,45 @@
       else if (err && err.network) this.online = false;
       if (before !== this.online) this.emit({ type: 'online' });
     }
-    async 外部を実行(e) {
-      const id = e.引数.投稿ID;
-      if (e.名前 === 'Dropbox.書く') {
-        const p = this.state.保存.投稿 && this.state.保存.投稿[id];
-        if (!p || p.状態 === '完全削除済') return;
-        try {
-          await this.書き出す(p);
-          this.ネットワークの結果(true);
-          this.state.再送書く = this.state.再送書く.filter((x) => x !== id);
-          delete this.lastError[id];
-          this.変わった();
-          await this.応答する('書込待ち', '書込成功', id);
-        } catch (err) {
-          this.ネットワークの結果(false, err);
-          if (!this.state.再送書く.includes(id)) this.state.再送書く.push(id);
-          this.lastError[id] = err.message || String(err);
-          this.変わった();
-          // 圏外は失敗ではなく「あとで反映」（J28）。つながったとき再送する。原因が別にあるときだけ、すぐ表示する（J37）
-          if (err.network) return;
-          await this.応答する('書込待ち', '書込失敗', id);
-          this.お知らせ('error', '記録できませんでした（投稿は端末に残しています）。原因：' + this.lastError[id], id);
-        }
-      } else if (e.名前 === 'Dropbox.消す') {
-        try {
-          await this.dropbox.deletePost(id);
-          this.ネットワークの結果(true);
-          this.state.再送消す = this.state.再送消す.filter((x) => x !== id);
-          delete this.state.改訂[id];
-        } catch (err) {
-          this.ネットワークの結果(false, err);
-          if (!this.state.再送消す.includes(id)) this.state.再送消す.push(id);
-        }
-        this.変わった();
-      }
+    // 外部作用は、処理が出した内容（入出力型で宣言したもの）だけをDropboxへ出す。失敗したら「再送」に残し、出来事のたびにやり直す
+    再送の鍵(e) { return e.名前 + ':' + Object.values(e.引数)[0]; }
+    再送に残す(e) {
+      this.state.再送 = this.state.再送.filter((x) => this.再送の鍵(x) !== this.再送の鍵(e));
+      this.state.再送.push({ 名前: e.名前, 引数: e.引数, 冪等キー: e.冪等キー });
     }
-    async 書き出す(p) {
-      const links = {};
-      for (const l of p.リンク) links[l] = (this.state.部品[l] || {}).url || '';
-      for (const f of p.添付) {
-        const part = this.state.部品[f];
-        if (part && !part.上げた) { await this.dropbox.putFile(f, part.名前, part.dataURL); part.上げた = true; }
+    再送から外す(e) { this.state.再送 = this.state.再送.filter((x) => this.再送の鍵(x) !== this.再送の鍵(e)); }
+    async 外部を実行(e) {
+      const a = e.引数;
+      try {
+        let rev;
+        if (e.名前 === 'Dropbox.書く') rev = await this.dropbox.putPost(a.投稿ID, a);
+        else if (e.名前 === 'Dropbox.消す') await this.dropbox.deletePost(a.投稿ID);
+        else if (e.名前 === 'Dropbox.ファイルを書く') await this.dropbox.putFile(a.添付ID, a.名前, a.種類, a.中身);
+        else if (e.名前 === 'Dropbox.リンクを書く') await this.dropbox.putLink(a.リンクID, a.先);
+        this.ネットワークの結果(true);
+        this.再送から外す(e);
+        if (e.名前 === 'Dropbox.書く') { this.state.改訂[a.投稿ID] = rev; delete this.lastError[a.投稿ID]; }
+        if (e.名前 === 'Dropbox.消す') delete this.state.改訂[a.投稿ID];
+        this.変わった();
+        if (e.名前 === 'Dropbox.書く') await this.応答する('書込待ち', '書込成功', a.投稿ID);
+      } catch (err) {
+        this.ネットワークの結果(false, err);
+        this.再送に残す(e);
+        this.変わった();
+        if (e.名前 !== 'Dropbox.書く') return;
+        this.lastError[a.投稿ID] = err.message || String(err);
+        // 圏外は失敗ではなく「あとで反映」（J28）。つながったとき再送する。原因が別にあるときだけ、すぐ表示する（J37）
+        if (err.network) return;
+        await this.応答する('書込待ち', '書込失敗', a.投稿ID);
+        this.お知らせ('error', '記録できませんでした（投稿は端末に残しています）。原因：' + this.lastError[a.投稿ID], a.投稿ID);
       }
-      const names = {};
-      for (const f of p.添付) names[f] = (this.state.部品[f] || {}).名前 || '';
-      const rev = await this.dropbox.putPost(p.投稿ID, {
-        投稿ID: p.投稿ID, 本文: p.本文, 添付: p.添付, 添付名: names, リンク: p.リンク, リンク先: links,
-        書いた日時: p.書いた日時, 最後に操作した日時: p.最後に操作した日時,
-      });
-      this.state.改訂[p.投稿ID] = rev;
     }
 
     // ---- 画面からの操作 ----
-    部品を足す(part) {
-      const id = this.newId(part.種類 === 'file' ? 'f' : 'l');
-      this.state.部品[id] = Object.assign({ 上げた: false }, part);
-      this.変わった();
-      return id;
-    }
+    async 添付を足す(名前, 種類, 中身) { return (await this.run('添付する', { 名前, 種類, 中身 })).引数[0]; }
+    async リンクを付ける(先) { return (await this.run('リンクを付ける', { 先 })).引数[0]; }
+    添付の表示(id) { const f = (this.state.保存.添付ファイル || {})[id]; return f ? { 名前: f.名前, 種類: f.種類, dataURL: 'data:' + f.種類 + ';base64,' + f.中身 } : null; }
+    リンクの先(id) { const l = (this.state.保存.添付リンク || {})[id]; return l ? l.先 : ''; }
     投稿する(本文, 添付, リンク) { return this.run('投稿する', { 本文, 添付, リンク }); }
     直す(投稿ID, 本文, 添付, リンク) { return this.run('直す', { 投稿ID, 本文, 添付, リンク }); }
     消す(投稿ID) { return this.run('消す', { 投稿ID }); }
@@ -274,13 +255,8 @@
           await this.run(st.処理, { [key]: id });
         }
       }
-      // 圏外で書き込めなかった投稿のうち、待ちが残っているもの：待ちは残して、書き込みだけやり直す
-      for (const id of [...this.state.再送書く]) {
-        const p = posts()[id];
-        if (!p || p.状態 !== '投稿済') this.state.再送書く = this.state.再送書く.filter((x) => x !== id);
-        else if (this.待っている('書込待ち', id)) await this.外部を実行({ 名前: 'Dropbox.書く', 引数: { 投稿ID: id } });
-      }
-      for (const id of [...this.state.再送消す]) await this.外部を実行({ 名前: 'Dropbox.消す', 引数: { 投稿ID: id } });
+      // 外へ出せなかった作用（圏外など）を、つながったときにやり直す
+      for (const e of [...this.state.再送]) await this.外部を実行(e);
       await this.idle();
       const 取り込む処理 = new Set(steps.filter((s) => s.種別 === '外から').map((s) => s.処理));
       if (取り込む処理.size) await this.取り込む(取り込む処理);
@@ -302,12 +278,14 @@
         let r;
         try { r = await this.dropbox.getPost(id); } catch (err) { this.ネットワークの結果(false, err); return; }
         const local = (this.state.保存.投稿 || {})[id];
-        for (const f of r.添付 || []) {
-          if (!this.state.部品[f]) {
-            try { this.state.部品[f] = { 種類: 'file', 名前: (r.添付名 || {})[f] || f, dataURL: await this.dropbox.getFile(f), 上げた: true }; } catch (err) { /* 画像は次回 */ }
-          }
+        if (許す.has('添付の取り込み')) for (const f of r.添付 || []) {
+          if ((this.state.保存.添付ファイル || {})[f]) continue;
+          try { const x = await this.dropbox.getFile(f); await this.run('添付の取り込み', { 名前: x.名前, 種類: x.種類, 中身: x.中身 }, f); } catch (err) { this.ネットワークの結果(false, err); }
         }
-        for (const l of r.リンク || []) if (!this.state.部品[l]) this.state.部品[l] = { 種類: 'link', url: (r.リンク先 || {})[l] || '' };
+        if (許す.has('リンクの取り込み')) for (const l of r.リンク || []) {
+          if ((this.state.保存.添付リンク || {})[l]) continue;
+          try { const x = await this.dropbox.getLink(l); await this.run('リンクの取り込み', { 先: x.先 }, l); } catch (err) { this.ネットワークの結果(false, err); }
+        }
         if (!local) {
           if (許す.has('投稿の取り込み')) await this.run('投稿の取り込み', { 本文: r.本文, 添付: r.添付 || [], リンク: r.リンク || [], 書いた日時: r.書いた日時, 操作日時: r.最後に操作した日時 }, id);
         } else if (許す.has('直しの取り込み') && (local.状態 === '投稿済' || local.状態 === '削除済') && r.最後に操作した日時 > local.最後に操作した日時) {

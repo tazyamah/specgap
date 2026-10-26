@@ -37,6 +37,7 @@ pub fn 範囲内(名: &str, x: i128, lo: Option<i128>, hi: Option<i128>) -> i128
     範囲検査(名, x, lo, hi).expect("範囲の宣言に反する値を書こうとした");
     x
 }
+pub fn バイト列表示(b: &[u8]) -> String { format!("0x{}", b.iter().map(|x| format!("{:02x}", x)).collect::<String>()) }
 pub fn 集合表示(s: &BTreeSet<String>) -> String {
     format!("{{{}}}", s.iter().cloned().collect::<Vec<_>>().join(","))
 }
@@ -105,9 +106,25 @@ pub struct 投稿 {
     pub 記録: 記録状態,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct 添付ファイル {
+    pub 添付ID: String,
+    pub 名前: String,
+    pub 種類: String,
+    pub 中身: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct 添付リンク {
+    pub リンクID: String,
+    pub 先: String,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct 保存 {
     pub 投稿: BTreeMap<String, 投稿>,
+    pub 添付ファイル: BTreeMap<String, 添付ファイル>,
+    pub 添付リンク: BTreeMap<String, 添付リンク>,
 }
 
 impl 保存 {
@@ -115,6 +132,8 @@ impl 保存 {
         for w in 書込列 {
             match w {
                 書込::投稿_新規(r) => { self.投稿.insert(r.投稿ID.clone(), r); }
+                書込::添付ファイル_新規(r) => { self.添付ファイル.insert(r.添付ID.clone(), r); }
+                書込::添付リンク_新規(r) => { self.添付リンク.insert(r.リンクID.clone(), r); }
                 書込::投稿_記録(id, v) => { self.投稿.get_mut(&id).expect("書込先が無い").記録 = v; }
                 書込::投稿_リンク(id, v) => { self.投稿.get_mut(&id).expect("書込先が無い").リンク = v; }
                 書込::投稿_最後に操作した日時(id, v) => { self.投稿.get_mut(&id).expect("書込先が無い").最後に操作した日時 = v; }
@@ -141,6 +160,26 @@ impl 保存 {
             }
         }
         for id in self.投稿.keys() { if !後.投稿.contains_key(id) { out.push(format!("投稿({})削除", id)); } }
+        for (id, r) in &後.添付ファイル {
+            match self.添付ファイル.get(id) {
+                None => out.push(format!("添付ファイル({})新規(名前={}, 種類={}, 中身={})", id, r.名前, r.種類, バイト列表示(&r.中身))),
+                Some(b) => {
+                    if b.名前 != r.名前 { out.push(format!("添付ファイル({}).名前:{}→{}", id, b.名前, r.名前)); }
+                    if b.種類 != r.種類 { out.push(format!("添付ファイル({}).種類:{}→{}", id, b.種類, r.種類)); }
+                    if b.中身 != r.中身 { out.push(format!("添付ファイル({}).中身:{}→{}", id, バイト列表示(&b.中身), バイト列表示(&r.中身))); }
+                }
+            }
+        }
+        for id in self.添付ファイル.keys() { if !後.添付ファイル.contains_key(id) { out.push(format!("添付ファイル({})削除", id)); } }
+        for (id, r) in &後.添付リンク {
+            match self.添付リンク.get(id) {
+                None => out.push(format!("添付リンク({})新規(先={})", id, r.先)),
+                Some(b) => {
+                    if b.先 != r.先 { out.push(format!("添付リンク({}).先:{}→{}", id, b.先, r.先)); }
+                }
+            }
+        }
+        for id in self.添付リンク.keys() { if !後.添付リンク.contains_key(id) { out.push(format!("添付リンク({})削除", id)); } }
         out.sort();
         out
     }
@@ -149,6 +188,8 @@ impl 保存 {
 #[derive(Clone, Debug, PartialEq)]
 pub enum 書込 {
     投稿_新規(投稿),
+    添付ファイル_新規(添付ファイル),
+    添付リンク_新規(添付リンク),
     投稿_記録(String, 記録状態),
     投稿_リンク(String, BTreeSet<String>),
     投稿_最後に操作した日時(String, i64),
@@ -159,14 +200,18 @@ pub enum 書込 {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum 外部作用 {
-    Dropbox_書く { 投稿ID: String, 本文: String, 冪等キー: String },
+    Dropbox_書く { 投稿ID: String, 本文: String, 添付: BTreeSet<String>, リンク: BTreeSet<String>, 書いた日時: i64, 最後に操作した日時: i64, 冪等キー: String },
     Dropbox_消す { 投稿ID: String, 冪等キー: String },
+    Dropbox_ファイルを書く { 添付ID: String, 名前: String, 種類: String, 中身: Vec<u8>, 冪等キー: String },
+    Dropbox_リンクを書く { リンクID: String, 先: String, 冪等キー: String },
 }
 impl 外部作用 {
     pub fn 表示(&self) -> String {
         match self {
-            外部作用::Dropbox_書く { 投稿ID, 本文, 冪等キー } => format!("Dropbox.書く({}, {}, 冪等キー={})", 投稿ID, 本文, 冪等キー),
+            外部作用::Dropbox_書く { 投稿ID, 本文, 添付, リンク, 書いた日時, 最後に操作した日時, 冪等キー } => format!("Dropbox.書く({}, {}, {}, {}, {}, {}, 冪等キー={})", 投稿ID, 本文, 集合表示(&添付), 集合表示(&リンク), 書いた日時, 最後に操作した日時, 冪等キー),
             外部作用::Dropbox_消す { 投稿ID, 冪等キー } => format!("Dropbox.消す({}, 冪等キー={})", 投稿ID, 冪等キー),
+            外部作用::Dropbox_ファイルを書く { 添付ID, 名前, 種類, 中身, 冪等キー } => format!("Dropbox.ファイルを書く({}, {}, {}, {}, 冪等キー={})", 添付ID, 名前, 種類, バイト列表示(&中身), 冪等キー),
+            外部作用::Dropbox_リンクを書く { リンクID, 先, 冪等キー } => format!("Dropbox.リンクを書く({}, {}, 冪等キー={})", リンクID, 先, 冪等キー),
         }
     }
 }
@@ -193,6 +238,50 @@ impl 投稿結果 {
         match self {
             投稿結果::端末保存済(a0) => vec![format!("{}", a0)],
             投稿結果::空 => vec![],
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum 添付結果 {
+    添付済(String),
+}
+impl 添付結果 {
+    pub fn 表示(&self) -> String {
+        match self {
+            添付結果::添付済(a0) => format!("添付済({})", a0),
+        }
+    }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            添付結果::添付済(..) => "添付済",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            添付結果::添付済(a0) => vec![format!("{}", a0)],
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum リンク結果 {
+    付けた(String),
+}
+impl リンク結果 {
+    pub fn 表示(&self) -> String {
+        match self {
+            リンク結果::付けた(a0) => format!("付けた({})", a0),
+        }
+    }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            リンク結果::付けた(..) => "付けた",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            リンク結果::付けた(a0) => vec![format!("{}", a0)],
         }
     }
 }
@@ -373,6 +462,28 @@ impl 巻き戻し結果 {
             巻き戻し結果::巻き戻した => vec![],
             巻き戻し結果::不要 => vec![],
             巻き戻し結果::投稿なし => vec![],
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum 実体の取り込み結果 {
+    取り込んだ,
+}
+impl 実体の取り込み結果 {
+    pub fn 表示(&self) -> String {
+        match self {
+            実体の取り込み結果::取り込んだ => "取り込んだ".to_string(),
+        }
+    }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            実体の取り込み結果::取り込んだ => "取り込んだ",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            実体の取り込み結果::取り込んだ => vec![],
         }
     }
 }
@@ -633,6 +744,138 @@ pub fn 投稿する(ctx: &投稿する文脈, 保存: &保存, 入力: &投稿�
     return 投稿する出力 { 結果: 投稿結果::端末保存済(投稿.投稿ID.clone()), 書込: 書込列, 外部: 外部列 };
 }
 
+// ---- 処理 添付する ----
+pub struct 添付する入力 {
+    pub 名前: String,
+    pub 種類: String,
+    pub 中身: Vec<u8>,
+}
+impl 添付する入力 {
+    /// 外部から取り込むときの、範囲の宣言の検査
+    pub fn 検査(&self) -> Result<(), String> {
+        範囲検査("中身の長さ", self.中身.len() as i128, Some(1), Some(20000000))?;
+        Ok(())
+    }
+}
+/// 文脈：【参照】（配備時に埋まる）と、採番（実行のたびに基盤が代入）
+pub struct 添付する文脈 {
+    pub 新添付ファイルID: String,
+}
+pub struct 添付する出力 {
+    pub 結果: 添付結果,
+    pub 書込: Vec<書込>,
+    pub 外部: Vec<外部作用>,
+}
+pub fn 添付する(ctx: &添付する文脈, 保存: &保存, 入力: &添付する入力) -> 添付する出力 {
+    let mut 書込列: Vec<書込> = Vec::new();
+    let mut 外部列: Vec<外部作用> = Vec::new();
+    let 添付 = 添付ファイル {
+        添付ID: ctx.新添付ファイルID.clone(),
+        名前: 入力.名前.clone(),
+        種類: 入力.種類.clone(),
+        中身: 入力.中身.clone(),
+    };
+    書込列.push(書込::添付ファイル_新規(添付.clone()));
+    外部列.push(外部作用::Dropbox_ファイルを書く { 添付ID: 添付.添付ID.clone(), 名前: 入力.名前.clone(), 種類: 入力.種類.clone(), 中身: 入力.中身.clone(), 冪等キー: 添付.添付ID.clone() });
+    return 添付する出力 { 結果: 添付結果::添付済(添付.添付ID.clone()), 書込: 書込列, 外部: 外部列 };
+}
+
+// ---- 処理 リンクを付ける ----
+pub struct リンクを付ける入力 {
+    pub 先: String,
+}
+impl リンクを付ける入力 {
+    /// 外部から取り込むときの、範囲の宣言の検査
+    pub fn 検査(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
+/// 文脈：【参照】（配備時に埋まる）と、採番（実行のたびに基盤が代入）
+pub struct リンクを付ける文脈 {
+    pub 新添付リンクID: String,
+}
+pub struct リンクを付ける出力 {
+    pub 結果: リンク結果,
+    pub 書込: Vec<書込>,
+    pub 外部: Vec<外部作用>,
+}
+pub fn リンクを付ける(ctx: &リンクを付ける文脈, 保存: &保存, 入力: &リンクを付ける入力) -> リンクを付ける出力 {
+    let mut 書込列: Vec<書込> = Vec::new();
+    let mut 外部列: Vec<外部作用> = Vec::new();
+    let 付け先 = 添付リンク {
+        リンクID: ctx.新添付リンクID.clone(),
+        先: 入力.先.clone(),
+    };
+    書込列.push(書込::添付リンク_新規(付け先.clone()));
+    外部列.push(外部作用::Dropbox_リンクを書く { リンクID: 付け先.リンクID.clone(), 先: 入力.先.clone(), 冪等キー: 付け先.リンクID.clone() });
+    return リンクを付ける出力 { 結果: リンク結果::付けた(付け先.リンクID.clone()), 書込: 書込列, 外部: 外部列 };
+}
+
+// ---- 処理 添付の取り込み ----
+pub struct 添付の取り込み入力 {
+    pub 名前: String,
+    pub 種類: String,
+    pub 中身: Vec<u8>,
+}
+impl 添付の取り込み入力 {
+    /// 外部から取り込むときの、範囲の宣言の検査
+    pub fn 検査(&self) -> Result<(), String> {
+        範囲検査("中身の長さ", self.中身.len() as i128, Some(1), Some(20000000))?;
+        Ok(())
+    }
+}
+/// 文脈：【参照】（配備時に埋まる）と、採番（実行のたびに基盤が代入）
+pub struct 添付の取り込み文脈 {
+    pub 新添付ファイルID: String,
+}
+pub struct 添付の取り込み出力 {
+    pub 結果: 実体の取り込み結果,
+    pub 書込: Vec<書込>,
+    pub 外部: Vec<外部作用>,
+}
+pub fn 添付の取り込み(ctx: &添付の取り込み文脈, 保存: &保存, 入力: &添付の取り込み入力) -> 添付の取り込み出力 {
+    let mut 書込列: Vec<書込> = Vec::new();
+    let mut 外部列: Vec<外部作用> = Vec::new();
+    let 添付 = 添付ファイル {
+        添付ID: ctx.新添付ファイルID.clone(),
+        名前: 入力.名前.clone(),
+        種類: 入力.種類.clone(),
+        中身: 入力.中身.clone(),
+    };
+    書込列.push(書込::添付ファイル_新規(添付.clone()));
+    return 添付の取り込み出力 { 結果: 実体の取り込み結果::取り込んだ, 書込: 書込列, 外部: 外部列 };
+}
+
+// ---- 処理 リンクの取り込み ----
+pub struct リンクの取り込み入力 {
+    pub 先: String,
+}
+impl リンクの取り込み入力 {
+    /// 外部から取り込むときの、範囲の宣言の検査
+    pub fn 検査(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
+/// 文脈：【参照】（配備時に埋まる）と、採番（実行のたびに基盤が代入）
+pub struct リンクの取り込み文脈 {
+    pub 新添付リンクID: String,
+}
+pub struct リンクの取り込み出力 {
+    pub 結果: 実体の取り込み結果,
+    pub 書込: Vec<書込>,
+    pub 外部: Vec<外部作用>,
+}
+pub fn リンクの取り込み(ctx: &リンクの取り込み文脈, 保存: &保存, 入力: &リンクの取り込み入力) -> リンクの取り込み出力 {
+    let mut 書込列: Vec<書込> = Vec::new();
+    let mut 外部列: Vec<外部作用> = Vec::new();
+    let 付け先 = 添付リンク {
+        リンクID: ctx.新添付リンクID.clone(),
+        先: 入力.先.clone(),
+    };
+    書込列.push(書込::添付リンク_新規(付け先.clone()));
+    return リンクの取り込み出力 { 結果: 実体の取り込み結果::取り込んだ, 書込: 書込列, 外部: 外部列 };
+}
+
 // ---- 処理 反映の要求 ----
 pub struct 反映の要求入力 {
     pub 投稿ID: String,
@@ -661,7 +904,7 @@ pub fn 反映の要求(ctx: &反映の要求文脈, 保存: &保存, 入力: &�
     if (投稿.状態 == 投稿状態::削除済) {
         return 反映の要求出力 { 結果: 要求結果::状態違い, 書込: 書込列, 外部: 外部列 };
     }
-    外部列.push(外部作用::Dropbox_書く { 投稿ID: 入力.投稿ID.clone(), 本文: 投稿.本文.clone(), 冪等キー: 入力.投稿ID.clone() });
+    外部列.push(外部作用::Dropbox_書く { 投稿ID: 入力.投稿ID.clone(), 本文: 投稿.本文.clone(), 添付: 投稿.添付.clone(), リンク: 投稿.リンク.clone(), 書いた日時: 投稿.書いた日時, 最後に操作した日時: 投稿.最後に操作した日時, 冪等キー: 入力.投稿ID.clone() });
     return 反映の要求出力 { 結果: 要求結果::要求済, 書込: 書込列, 外部: 外部列 };
 }
 
@@ -1185,6 +1428,30 @@ pub fn 未反映の投稿(ctx: &未反映の投稿文脈, 保存: &保存, 入�
 }
 
 // 【フロー】：結果の種類ごとの行き先。match の網羅は Rust が検査する。
+pub fn 実体_添付する(r: &添付結果) -> 行き先 {
+    match r {
+        添付結果::添付済(..) => 行き先::応答,
+    }
+}
+
+pub fn 実体_リンクを付ける(r: &リンク結果) -> 行き先 {
+    match r {
+        リンク結果::付けた(..) => 行き先::応答,
+    }
+}
+
+pub fn 実体_添付の取り込み(r: &実体の取り込み結果) -> 行き先 {
+    match r {
+        実体の取り込み結果::取り込んだ => 行き先::応答,
+    }
+}
+
+pub fn 実体_リンクの取り込み(r: &実体の取り込み結果) -> 行き先 {
+    match r {
+        実体の取り込み結果::取り込んだ => 行き先::応答,
+    }
+}
+
 pub fn 投稿_投稿する(r: &投稿結果) -> 行き先 {
     match r {
         投稿結果::端末保存済(..) => 行き先::処理("反映の要求"),
