@@ -123,8 +123,12 @@ def compare_static(spec: dict, plan: dict) -> list[Finding]:
     a = {(r["データ"], r["状態"]): {"区分": r["区分"].strip()} for r in sect("状態")}
     b = {(d, s): {"区分": k} for d, s, k in spec["状態"]}
     cmp_map("状態", a, b, out, j)
-    a = {(r["データ"], r["元"], r["先"]): {"起こす処理": r["起こす処理"].strip()} for r in sect("遷移")}
-    b = {(d, x, y): {"起こす処理": p} for d, x, y, p in spec["遷移"]}
+    # 同じ遷移を複数の処理が起こせる（別端末の操作の取り込みなど）。処理名の集合として比べる
+    a = {(r["データ"], r["元"], r["先"]): {"起こす処理": ",".join(sorted(items(r["起こす処理"])))} for r in sect("遷移")}
+    b = {}
+    for d, x, y, p in spec["遷移"]:
+        b.setdefault((d, x, y), set()).add(p)
+    b = {k: {"起こす処理": ",".join(sorted(v))} for k, v in b.items()}
     cmp_map("遷移", a, b, out, lambda k: f"{k[0]}: {k[1]}→{k[2]}")
     a = {(r["データ"], r["元"], r["先"]): {} for r in sect("拒否")}
     b = {(d, x, y): {} for d, x, y, _ in spec["拒否"]}
