@@ -600,4 +600,21 @@ fn main() {
             }
         }
     }
+    {
+        let mut 保存 = 保存::default();
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "写真つき".to_string(), 添付: BTreeSet::from(["F1".to_string()]), リンク: BTreeSet::from(["L1".to_string()]), 書いた日時: 1000i64, 最後に操作した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::端末保存済 });
+        保存.添付ファイル.insert("F1".to_string(), 添付ファイル { 添付ID: "F1".to_string(), 名前: "a.png".to_string(), 種類: "image/png".to_string(), 中身: vec![0x89u8, 0x50u8, 0x4eu8, 0x47u8] });
+        保存.添付リンク.insert("L1".to_string(), 添付リンク { リンクID: "L1".to_string(), 先: "https://example.com".to_string() });
+        let ctx = 反映の要求文脈 {  };
+        let 入力 = 反映の要求入力 { 投稿ID: "N1".to_string() };
+        match 入力.検査() {
+            Err(e) => println!("EX43\t入力不正({})\t\t", e),
+            Ok(()) => {
+                let 出力 = 反映の要求(&ctx, &保存, &入力);
+                let 前 = 保存.clone();
+                保存.適用(出力.書込.clone());
+                println!("EX43\t{}\t{}\t{}", 出力.結果.表示(), 前.差分(&保存).join(";"), 出力.外部.iter().map(|e| e.表示()).collect::<Vec<_>>().join(";"));
+            }
+        }
+    }
 }

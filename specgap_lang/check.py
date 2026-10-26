@@ -127,6 +127,7 @@ class Checker:
         self.check_flows()
         self.check_queries()
         self.check_triggers()
+        self.check_effect_waits()
         self.check_events()
         self.check_states()
         self.check_invariants()
@@ -186,6 +187,17 @@ class Checker:
         for name in self.procs:
             if name not in in_flow:
                 self.d(WARN, "行き先", f"処理 {name}", "どのフローにも入っていません")
+
+    def check_effect_waits(self):
+        """外部作用を要求する処理は、結果を待つ経路（フローの「待つ」）を持つか、待たない理由を宣言する。
+        信頼できない先（ネットワーク・外部サービス）への永続化が、黙って失敗しっぱなしになるのを防ぐ。"""
+        waits = {proc for fl in self.p.flows for proc, routes in fl.entries if any(d.startswith("待つ ") for _, d in routes)}
+        for proc, info in self.infos.items():
+            for eff in sorted({e for e, _ in info.effects}):
+                decl = self.effects.get(eff)
+                if decl is None or decl.no_wait is not None or proc in waits:
+                    continue
+                self.d(ERROR, "失敗", f"処理 {proc}", f"外部作用 {eff} の失敗の扱いが決まっていません（フローで「待つ」へ進めるか、外部作用の宣言に 待たない \"人が決めた理由\" を書いてください）")
 
     def check_queries(self):
         """問い合わせ（読むだけの処理）の検査。使う項目の型、入力との型の一致、宣言した「読む」と実際のずれ。"""
@@ -690,6 +702,16 @@ class ProcChecker:
             self.create(st)
         elif isinstance(st, Request):
             self.request(st)
+        elif isinstance(st, ForEach):
+            env2 = self.bind(st.binder)
+            saved = self.env
+            self.env = env2
+            for inner in st.body:
+                if isinstance(inner, Request) or (isinstance(inner, Assign) and isinstance(inner.e, Index)):
+                    self.stmt(inner, pos)
+                else:
+                    self.d(ERROR, "型", "各 … { } の中に書けるのは、データを引く文と、要求だけです", st.line)
+            self.env = saved
 
     def check_transition(self, data, fname, dst, line):
         sname = next(f.type.target for f in self.ck.data[data].fields if f.name == fname)

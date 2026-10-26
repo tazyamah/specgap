@@ -99,12 +99,12 @@
     // ---- フロー：結果ごとの行き先をたどる ----
     async run(name, given, idOverride) {
       let cur = name, inp = Object.assign({}, given), first;
-      const effects = [];
+      const bundles = [];
       for (let i = 0; i < 12; i++) {
         const r = this.呼ぶ(cur, inp, cur === name ? idOverride : undefined);
         this.emit({ type: 'process', 処理: cur, 結果: r.結果 });
         if (!first) first = r;
-        for (const e of r.外部) effects.push(e);
+        if (r.外部.length) bundles.push(r.外部);
         const route = (this.defs.フロー[cur] || {})[r.結果];
         if (!route || route === '応答') break;
         if (route.startsWith('待つ ')) { this.待ちに入る(route.slice(3), inp, r); break; }
@@ -113,7 +113,7 @@
         cur = route;
       }
       this.変わった();
-      for (const e of effects) this.追跡(this.外部を実行(e));
+      for (const b of bundles) this.追跡(this.束を実行(b));
       return first;
     }
     追跡(p) {
@@ -167,32 +167,41 @@
       else if (err && err.network) this.online = false;
       if (before !== this.online) this.emit({ type: 'online' });
     }
-    // 外部作用は、処理が出した内容（入出力型で宣言したもの）だけをDropboxへ出す。失敗したら「再送」に残し、出来事のたびにやり直す
-    再送の鍵(e) { return e.名前 + ':' + Object.values(e.引数)[0]; }
-    再送に残す(e) {
-      this.state.再送 = this.state.再送.filter((x) => this.再送の鍵(x) !== this.再送の鍵(e));
-      this.state.再送.push({ 名前: e.名前, 引数: e.引数, 冪等キー: e.冪等キー });
+    // 外部作用は、処理が出した内容（入出力型で宣言したもの）だけをDropboxへ出す。
+    // 1回の処理が出した作用は「束」。順に出し、1つでも失敗したら束ぜんたいが失敗（J61）。
+    // 失敗したら束ごと「再送」に残し、出来事のたびにやり直す（冪等キーがあるので、やり直しても同じ結果）
+    束の鍵(束) { const e = 束[束.length - 1]; return e.名前 + ':' + Object.values(e.引数)[0]; }
+    再送に残す(束) {
+      this.state.再送 = this.state.再送.filter((x) => this.束の鍵(x) !== this.束の鍵(束));
+      this.state.再送.push(束.map((e) => ({ 名前: e.名前, 引数: e.引数, 冪等キー: e.冪等キー })));
     }
-    再送から外す(e) { this.state.再送 = this.state.再送.filter((x) => this.再送の鍵(x) !== this.再送の鍵(e)); }
-    async 外部を実行(e) {
+    再送から外す(束) { this.state.再送 = this.state.再送.filter((x) => this.束の鍵(x) !== this.束の鍵(束)); }
+    async 作用を出す(e) {
       const a = e.引数;
+      if (e.名前 === 'Dropbox.書く') return this.dropbox.putPost(a.投稿ID, a);
+      if (e.名前 === 'Dropbox.消す') return this.dropbox.deletePost(a.投稿ID);
+      if (e.名前 === 'Dropbox.ファイルを書く') return this.dropbox.putFile(a.添付ID, a.名前, a.種類, a.中身);
+      if (e.名前 === 'Dropbox.リンクを書く') return this.dropbox.putLink(a.リンクID, a.先);
+    }
+    async 束を実行(束) {
+      if (!束.length) return;
+      const 本体 = 束[束.length - 1]; // 本文（投稿）は最後に出す。部品が全部通ったときだけ書く
+      const a = 本体.引数;
+      const 書く = 本体.名前 === 'Dropbox.書く';
       try {
         let rev;
-        if (e.名前 === 'Dropbox.書く') rev = await this.dropbox.putPost(a.投稿ID, a);
-        else if (e.名前 === 'Dropbox.消す') await this.dropbox.deletePost(a.投稿ID);
-        else if (e.名前 === 'Dropbox.ファイルを書く') await this.dropbox.putFile(a.添付ID, a.名前, a.種類, a.中身);
-        else if (e.名前 === 'Dropbox.リンクを書く') await this.dropbox.putLink(a.リンクID, a.先);
+        for (const e of 束) rev = await this.作用を出す(e);
         this.ネットワークの結果(true);
-        this.再送から外す(e);
-        if (e.名前 === 'Dropbox.書く') { this.state.改訂[a.投稿ID] = rev; delete this.lastError[a.投稿ID]; }
-        if (e.名前 === 'Dropbox.消す') delete this.state.改訂[a.投稿ID];
+        this.再送から外す(束);
+        if (書く) { this.state.改訂[a.投稿ID] = rev; delete this.lastError[a.投稿ID]; }
+        if (本体.名前 === 'Dropbox.消す') delete this.state.改訂[a.投稿ID];
         this.変わった();
-        if (e.名前 === 'Dropbox.書く') await this.応答する('書込待ち', '書込成功', a.投稿ID);
+        if (書く) await this.応答する('書込待ち', '書込成功', a.投稿ID);
       } catch (err) {
         this.ネットワークの結果(false, err);
-        this.再送に残す(e);
+        this.再送に残す(束);
         this.変わった();
-        if (e.名前 !== 'Dropbox.書く') return;
+        if (!書く) return;
         this.lastError[a.投稿ID] = err.message || String(err);
         // 圏外は失敗ではなく「あとで反映」（J28）。つながったとき再送する。原因が別にあるときだけ、すぐ表示する（J37）
         if (err.network) return;
@@ -256,7 +265,7 @@
         }
       }
       // 外へ出せなかった作用（圏外など）を、つながったときにやり直す
-      for (const e of [...this.state.再送]) await this.外部を実行(e);
+      for (const b of [...this.state.再送]) await this.束を実行(b);
       await this.idle();
       const 取り込む処理 = new Set(steps.filter((s) => s.種別 === '外から').map((s) => s.処理));
       if (取り込む処理.size) await this.取り込む(取り込む処理);

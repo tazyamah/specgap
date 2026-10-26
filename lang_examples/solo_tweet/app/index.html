@@ -386,7 +386,7 @@ dialog label { display: block; margin: 8px 0; }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) engine.同期する(); });
   setInterval(() => {
     const posts = Object.values(engine.state.保存.投稿 || {});
-    if (posts.some((p) => p.状態 === '投稿済' && p.記録 === '端末保存済') || engine.state.再送消す.length) engine.同期する('つながりが戻った');
+    if (posts.some((p) => p.状態 === '投稿済' && p.記録 === '端末保存済') || engine.state.再送.length) engine.同期する('つながりが戻った');
   }, 30000);
 
   engine.on((ev) => {

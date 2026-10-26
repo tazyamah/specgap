@@ -404,3 +404,28 @@ def test_外部作用の出す内容が計画とずれたら見つかる():
     # コードの側で項目を足したのに計画が古いと、具体例の実行でも見つかる
     ck = chk(mutate(TW_CODE, "外部作用 Dropbox.消す(投稿ID: ID)", "外部作用 Dropbox.消す(投稿ID: ID, 理由: 文字列)"))
     assert any("Dropbox.消す" in f.where for f in compare_static(build(ck), read_plan(TW_PLAN)))
+
+
+# ---- 束（集合の要素ごとの要求）と、外部作用の失敗の扱い ----
+def test_集合の要素ごとの要求は部品が先で本文が最後の束になる():
+    ck = chk(TW_CODE)
+    assert ck.ok
+    lib = generate(ck)
+    assert "let 束の始め = 外部列.len();" in lib
+    assert "外部列.truncate(束の始め)" in lib
+    effs = [e for e, _ in ck.infos["反映の要求"].effects]
+    assert effs == ["Dropbox.ファイルを書く", "Dropbox.リンクを書く", "Dropbox.書く"]
+
+
+def test_各の中には引くことと要求しか書けない():
+    ck = chk(mutate(TW_CODE, "      添付 = 添付ファイル[添付ID] なければ 返す 投稿なし\n", "      添付 = 1\n"))
+    assert any("各" in m for m in msgs(ck, ERROR))
+
+
+def test_外部作用の失敗の扱いが決まっていないと止まる():
+    # 待たない理由を消す（消すは結果を待つ経路もない）
+    ck = chk(mutate(TW_CODE, ' 待たない "消えるのは30秒の猶予のあとで、失敗しても本人は困らない。出せなかったらつながったときにやり直す（J62）"', ""))
+    assert any("失敗の扱い" in m and "Dropbox.消す" in m for m in msgs(ck, ERROR))
+    # 結果を待つ経路をフローから外す
+    ck2 = chk(mutate(TW_CODE, "反映の要求: 要求済 → 待つ 書込待ち,", "反映の要求: 要求済 → 応答,"))
+    assert any("失敗の扱い" in m and "Dropbox.書く" in m for m in msgs(ck2, ERROR))

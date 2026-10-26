@@ -16,6 +16,7 @@
       this.offline = false; // 圏外のふり
       this.failNext = 0; // 次の書き込みを失敗させる回数（原因つき）
       this.failReason = '容量がいっぱいです（模擬）';
+      this.failFiles = false; // 添付の書き込みだけ失敗させる（束の確認用）
     }
     確かめる() { if (this.offline) throw ネット切れ(); }
     async listPosts() { this.確かめる(); return [...this.posts].map(([id, v]) => ({ id, rev: v.rev })); }
@@ -28,7 +29,7 @@
       return rev;
     }
     async deletePost(id) { this.確かめる(); this.posts.delete(id); }
-    async putFile(id, 名前, 種類, 中身) { this.確かめる(); this.files.set(id, { 名前, 種類, 中身 }); }
+    async putFile(id, 名前, 種類, 中身) { this.確かめる(); if (this.failFiles) throw new Error(this.failReason); this.files.set(id, { 名前, 種類, 中身 }); }
     async getFile(id) { this.確かめる(); const f = this.files.get(id); if (!f) throw new Error('見つかりません'); return f; }
     async putLink(id, 先) { this.確かめる(); this.links.set(id, { 先 }); }
     async getLink(id) { this.確かめる(); const l = this.links.get(id); if (!l) throw new Error('見つかりません'); return l; }

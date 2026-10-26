@@ -226,8 +226,14 @@ class Parser:
         self.expect("(")
         params = self.comma_list(lambda: (self.name(), (self.expect(":"), self.type())[1]))
         self.expect(")")
+        no_wait = None
+        if self.accept("待たない"):
+            t = self.next()
+            if t.kind != "STR":
+                raise self.err("待たない の後ろには、理由を \"…\" で書いてください")
+            no_wait = t.val
         self.end_line()
-        return EffectDecl(name, params, line)
+        return EffectDecl(name, params, line, no_wait)
 
     def part(self, line) -> Part:
         name = self.name()
@@ -327,6 +333,13 @@ class Parser:
             cond = self.expr() if self.accept(",") else None
             self.expect("}")
             s = Update(target, op, value, b, cond, line)
+        elif self.accept("各"):
+            b = self.binder()
+            self.block_open()
+            body = []
+            while not self.accept("}"):
+                body.append(self.stmt())
+            s = ForEach(b, body, line)
         elif self.accept("要求"):
             eff = self.dotted()
             self.expect("(")

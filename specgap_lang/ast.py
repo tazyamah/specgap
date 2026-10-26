@@ -58,6 +58,7 @@ class EffectDecl:
     name: str  # 決済.請求
     params: list[tuple[str, Type]]
     line: int = 0
+    no_wait: Optional[str] = None  # 待たない理由（人が決めた根拠）。None なら、結果を待つ経路が必須
 
 
 @dataclass
@@ -266,6 +267,14 @@ class Request:
     effect: str
     args: list
     idem: Optional[object] = None
+    line: int = 0
+
+
+@dataclass
+class ForEach:
+    """集合の要素ごとに、引いて要求する。要素どうしは独立で、全体で1つの束（外部作用の束）になる"""
+    binder: Binder
+    body: list
     line: int = 0
 
 

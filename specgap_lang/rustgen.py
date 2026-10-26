@@ -335,6 +335,7 @@ class ProcGen:
         self.scope: dict[str, tuple[str, str]] = {}  # 名前 → (種類, 型トークン)
         self.lines: list[str] = []
         self.ind = 1
+        self.in_loop = False
 
     def L(self, s=""):
         self.lines.append("    " * self.ind + s)
@@ -460,7 +461,9 @@ class ProcGen:
                 d = st.e.d
                 self.L(f"let {st.name} = match 保存.{d}.get(&({self.rx(st.e.e)})) {{")
                 self.L("    Some(r) => r,")
-                if st.absent:
+                if st.absent and self.in_loop:
+                    self.L(f"    None => {{ 外部列.truncate(束の始め); return {self.ret_expr(st.absent)}; }}")
+                elif st.absent:
                     self.L(f"    None => return {self.ret_expr(st.absent)},")
                 self.L("};")
                 self.scope[st.name] = ("local", f"Rec:{d}")
@@ -508,6 +511,18 @@ class ProcGen:
             self.L("};")
             self.L(f"書込列.push(書込::{st.data}_新規({st.name}.clone()));")
             self.scope[st.name] = ("local", f"Rec:{st.data}")
+        elif isinstance(st, ForEach):
+            head, body, saved = self.bind_lines(st.binder, "")
+            self.L("let 束の始め = 外部列.len();")
+            self.L(head)
+            for b in body:
+                self.L("    " + b)
+            self.in_loop = True
+            for inner in st.body:
+                self.stmt(inner)
+            self.in_loop = False
+            self.L("}")
+            self.scope = saved
         elif isinstance(st, Request):
             eff = self.ck.effects[st.effect]
             parts = []

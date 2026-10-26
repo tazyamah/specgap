@@ -175,6 +175,22 @@ const post = async (page, t) => {
     assert.ok(await page.isVisible('#list .post .links a'));
     assert.ok(await page.evaluate(() => [...window.mock.files.keys()].filter((k) => k !== 'fzz').length === 1 && [...window.mock.links.keys()].length >= 1)); ok('文字なしでも画像とリンクだけで投稿でき、サムネイルが出てDropboxへ画像も上がる');
 
+    // 束：添付の書き込みが失敗したら、本文も記録しない（投稿・添付・リンクは1つの記録）。直ったら束ごと出し直す
+    await page.evaluate(() => { window.mock.failFiles = true; });
+    await page.setInputFiles('#file', { name: 'い.png', mimeType: 'image/png', buffer: PNG });
+    await page.waitForSelector('#draft-parts .c');
+    await post(page, '束の確認');
+    await page.evaluate(() => window.engine.idle());
+    assert.ok(!(await page.evaluate(() => [...window.mock.posts.values()].some((v) => JSON.parse(v.json).本文 === '束の確認'))));
+    assert.ok((await page.textContent('.notice.error')).includes('容量がいっぱいです'));
+    assert.ok((await page.locator('.post:first-child .badge').count()) === 1);
+    await page.evaluate(() => { window.mock.failFiles = false; });
+    await page.click('#btn-refresh');
+    await page.evaluate(() => window.engine.idle());
+    await page.waitForFunction(() => !document.querySelector('.badge'));
+    assert.ok(await page.evaluate(() => [...window.mock.posts.values()].some((v) => JSON.parse(v.json).本文 === '束の確認')));
+    ok('束：添付の書き込みが失敗したら本文も記録されず、直ったら束ごと記録される');
+
     assert.deepStrictEqual(errors, []); ok('画面のエラーは出ていない');
     await ctx.close();
   }
