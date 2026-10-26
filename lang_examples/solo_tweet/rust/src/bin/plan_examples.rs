@@ -546,4 +546,15 @@ fn main() {
             }
         }
     }
+    {
+        let mut 保存 = 保存::default();
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "同じ秒の1".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に操作した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::記録済 });
+        保存.投稿.insert("N2".to_string(), 投稿 { 投稿ID: "N2".to_string(), 本文: "同じ秒の2".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に操作した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::記録済 });
+        let ctx = 一覧を見る文脈 {  };
+        let 入力 = 一覧を見る入力 { 件数: 5u64 };
+        match 入力.検査() {
+            Err(e) => println!("EX39\t入力不正({})\t\t", e),
+            Ok(()) => println!("EX39\t一覧({})\t\t", 一覧を見る(&ctx, &保存, &入力).join(",")),
+        }
+    }
 }

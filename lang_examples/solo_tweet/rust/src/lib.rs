@@ -1102,7 +1102,7 @@ pub fn 一覧を見る(ctx: &一覧を見る文脈, 保存: &保存, 入力: &�
         if !(r.状態 == 投稿状態::投稿済) { return false; }
         true
     }).collect();
-    行.sort_by(|a, b| b.書いた日時.cmp(&a.書いた日時).then(a.投稿ID.cmp(&b.投稿ID)));
+    行.sort_by(|a, b| b.書いた日時.cmp(&a.書いた日時).then(b.投稿ID.cmp(&a.投稿ID)));
     行.truncate(入力.件数 as usize);
     行.into_iter().map(|r| r.投稿ID.clone()).collect()
 }
@@ -1128,7 +1128,7 @@ pub fn 探す(ctx: &探す文脈, 保存: &保存, 入力: &探す入力) -> Vec
         if let Some(x) = &入力.単語 { if !(r.本文.contains(x.as_str())) { return false; } }
         true
     }).collect();
-    行.sort_by(|a, b| b.書いた日時.cmp(&a.書いた日時).then(a.投稿ID.cmp(&b.投稿ID)));
+    行.sort_by(|a, b| b.書いた日時.cmp(&a.書いた日時).then(b.投稿ID.cmp(&a.投稿ID)));
     行.into_iter().map(|r| r.投稿ID.clone()).collect()
 }
 
@@ -1151,7 +1151,7 @@ pub fn 圏外で見る(ctx: &圏外で見る文脈, 保存: &保存, 入力: &�
         if !(r.書いた日時 >= ctx.現在 - 86400) { return false; }
         true
     }).collect();
-    行.sort_by(|a, b| b.書いた日時.cmp(&a.書いた日時).then(a.投稿ID.cmp(&b.投稿ID)));
+    行.sort_by(|a, b| b.書いた日時.cmp(&a.書いた日時).then(b.投稿ID.cmp(&a.投稿ID)));
     行.truncate(入力.件数 as usize);
     行.into_iter().map(|r| r.投稿ID.clone()).collect()
 }

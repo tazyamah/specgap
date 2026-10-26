@@ -169,7 +169,7 @@ class Gen:
         if q.order:
             f, d = q.order
             a, b = ("b", "a") if d == "新しい順" else ("a", "b")
-            self.w(f"    行.sort_by(|a, b| {a}.{f}.cmp(&{b}.{f}).then(a.{key}.cmp(&b.{key})));")
+            self.w(f"    行.sort_by(|a, b| {a}.{f}.cmp(&{b}.{f}).then({a}.{key}.cmp(&{b}.{key})));")
         else:
             self.w(f"    行.sort_by(|a, b| a.{key}.cmp(&b.{key}));")
         if q.limit:

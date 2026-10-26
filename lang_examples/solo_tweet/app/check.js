@@ -21,7 +21,6 @@ async function open(browser, opts = {}) {
 }
 const texts = (page) => page.$$eval('#list .post .body', (a) => a.map((x) => x.textContent));
 const post = async (page, t) => {
-  await page.evaluate(() => { window.engine.skew += 2; }); // 秒単位の時刻が同じだと並びが決まらないので、時計を少し進める
   await page.fill('#text', t);
   await page.click('#btn-send');
   await page.evaluate(() => window.engine.idle());
