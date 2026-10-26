@@ -205,7 +205,7 @@
         this.lastError[a.投稿ID] = err.message || String(err);
         // 圏外は失敗ではなく「あとで反映」（J28）。つながったとき再送する。原因が別にあるときだけ、すぐ表示する（J37）
         if (err.network) return;
-        await this.応答する('書込待ち', '書込失敗', a.投稿ID);
+        await this.応答する('書込待ち', err.reason || 'その他の失敗', a.投稿ID);
         this.お知らせ('error', '記録できませんでした（投稿は端末に残しています）。原因：' + this.lastError[a.投稿ID], a.投稿ID);
       }
     }

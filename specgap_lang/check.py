@@ -190,14 +190,29 @@ class Checker:
 
     def check_effect_waits(self):
         """外部作用を要求する処理は、結果を待つ経路（フローの「待つ」）を持つか、待たない理由を宣言する。
-        信頼できない先（ネットワーク・外部サービス）への永続化が、黙って失敗しっぱなしになるのを防ぐ。"""
-        waits = {proc for fl in self.p.flows for proc, routes in fl.entries if any(d.startswith("待つ ") for _, d in routes)}
+        信頼できない先（ネットワーク・外部サービス）への永続化が、黙って失敗しっぱなしになるのを防ぐ。
+        論理的な失敗の理由（失敗 …）を宣言した外部作用は、待つ先のトリガに理由ごとの応答も要る。"""
+        waits = {}
+        for fl in self.p.flows:
+            for proc, routes in fl.entries:
+                for _, d in routes:
+                    if d.startswith("待つ "):
+                        waits.setdefault(proc, set()).add(d.split(" ", 1)[1])
+        triggers = {t.name: t for t in self.p.triggers}
         for proc, info in self.infos.items():
             for eff in sorted({e for e, _ in info.effects}):
                 decl = self.effects.get(eff)
-                if decl is None or decl.no_wait is not None or proc in waits:
+                if decl is None or decl.no_wait is not None:
                     continue
-                self.d(ERROR, "失敗", f"処理 {proc}", f"外部作用 {eff} の失敗の扱いが決まっていません（フローで「待つ」へ進めるか、外部作用の宣言に 待たない \"人が決めた理由\" を書いてください）")
+                if proc not in waits:
+                    self.d(ERROR, "失敗", f"処理 {proc}", f"外部作用 {eff} の失敗の扱いが決まっていません（フローで「待つ」へ進めるか、外部作用の宣言に 待たない \"人が決めた理由\" を書いてください）")
+                    continue
+                for tname in sorted(waits[proc]):
+                    tg = triggers.get(tname)
+                    answered = {key for k, key, _ in tg.causes if k == "応答"} if tg else set()
+                    for reason in decl.failures:
+                        if reason not in answered:
+                            self.d(ERROR, "失敗", f"処理 {proc}", f"外部作用 {eff} の失敗の理由「{reason}」への応答が、トリガ {tname} にありません")
 
     def check_queries(self):
         """問い合わせ（読むだけの処理）の検査。使う項目の型、入力との型の一致、宣言した「読む」と実際のずれ。"""

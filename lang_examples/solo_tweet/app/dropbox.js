@@ -23,7 +23,7 @@
     async getPost(id) { this.確かめる(); const v = this.posts.get(id); if (!v) throw new Error('見つかりません'); return JSON.parse(v.json); }
     async putPost(id, obj) {
       this.確かめる();
-      if (this.failNext > 0) { this.failNext--; throw new Error(this.failReason); }
+      if (this.failNext > 0) { this.failNext--; throw Object.assign(new Error(this.failReason), { reason: /容量/.test(this.failReason) ? '容量不足' : undefined }); }
       const rev = 'r' + (++this.rev);
       this.posts.set(id, { rev, json: JSON.stringify(obj) });
       return rev;
@@ -66,7 +66,8 @@
       if (res.ok) return res;
       let text = '';
       try { text = await res.text(); } catch (e) { /* そのまま */ }
-      if (res.status === 401) throw new Error('Dropbox の認証が通りません（トークンを確かめてください）');
+      if (res.status === 401) throw Object.assign(new Error('Dropbox の認証が通りません（トークンを確かめてください）'), { reason: '認証切れ' });
+      if (res.status === 409 && /insufficient_space/.test(text)) throw Object.assign(new Error('Dropbox の容量がいっぱいです'), { reason: '容量不足' });
       if (res.status === 409 && 欲しいもの === '無くてよい' && /not_found/.test(text)) return null;
       if (res.status === 429) throw new Error('Dropbox が混み合っています。少し待ってやり直します');
       throw new Error('Dropbox のエラー（' + res.status + '）' + text.slice(0, 120));

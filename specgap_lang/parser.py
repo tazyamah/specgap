@@ -241,6 +241,9 @@ class Parser:
         self.expect("(")
         params = self.comma_list(lambda: (self.name(), (self.expect(":"), self.type())[1]))
         self.expect(")")
+        failures = []
+        if self.accept("失敗"):
+            failures = self.comma_list(self.name)
         no_wait = None
         if self.accept("待たない"):
             t = self.next()
@@ -248,7 +251,7 @@ class Parser:
                 raise self.err("待たない の後ろには、理由を \"…\" で書いてください")
             no_wait = t.val
         self.end_line()
-        return EffectDecl(name, params, line, no_wait)
+        return EffectDecl(name, params, line, failures, no_wait)
 
     def part(self, line) -> Part:
         name = self.name()

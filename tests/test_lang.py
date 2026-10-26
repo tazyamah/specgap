@@ -438,3 +438,10 @@ def test_保存先の宣言から未同期の状態を言語が足す():
     # 人が書くとエラー（二重の宣言）
     with pytest.raises(ParseError):
         chk(mutate(TW_CODE, "  状態: 投稿状態\n}", "  状態: 投稿状態\n  記録: 記録状態\n}"))
+
+
+def test_失敗の理由への応答がトリガに無いと止まる():
+    ck = chk(TW_CODE)
+    assert ck.ok
+    ck2 = chk(mutate(TW_CODE, "  応答 容量不足 → 記録失敗の表示\n", ""))
+    assert any("容量不足" in m for m in msgs(ck2, ERROR))

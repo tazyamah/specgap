@@ -59,6 +59,7 @@ class EffectDecl:
     name: str  # 決済.請求
     params: list[tuple[str, Type]]
     line: int = 0
+    failures: list[str] = field(default_factory=list)  # 論理的な失敗の理由（相手の拒否など）。待つ先のトリガに、理由ごとの応答が要る
     no_wait: Optional[str] = None  # 待たない理由（人が決めた根拠）。None なら、結果を待つ経路が必須
 
 
