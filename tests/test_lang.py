@@ -342,3 +342,19 @@ def test_圏外の一覧は直近24時間だけ():
     spec = build(chk(TW_CODE))
     q = next(x for x in spec["問い合わせ"] if x["問い合わせ"] == "圏外で見る")
     assert "書いた日時 直近 24時間" in q["条件"]
+
+
+# ---- 画面（ブラウザで動く形）----
+def test_画面は生成したWASMの上で動く():
+    """画面の実行部・Dropbox窓口・WASM を1つにまとめ、ブラウザで操作して確かめる。ツールが揃っていなければ飛ばす。"""
+    import shutil
+    import subprocess
+    app = TW / "app"
+    have = shutil.which("node") and shutil.which("cargo") and subprocess.run(
+        ["node", "-e", "require('playwright')"], capture_output=True).returncode == 0
+    targets = subprocess.run(["rustup", "target", "list", "--installed"], capture_output=True, text=True).stdout if shutil.which("rustup") else ""
+    if not have or "wasm32-unknown-unknown" not in targets:
+        pytest.skip("node・playwright・wasm32 の cargo が揃っていません")
+    assert subprocess.run(["python", str(app / "build.py")], capture_output=True, text=True).returncode == 0
+    r = subprocess.run(["node", str(app / "check.js")], capture_output=True, text=True, cwd=app)
+    assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]

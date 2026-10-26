@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ひとり用つぶやき</title>
+<style>
+:root {
+  --bg: #f6f6f3; --panel: #ffffff; --fg: #1f2328; --muted: #656d76; --line: #d8d8d2;
+  --accent: #2d5be3; --accent-soft: #e6ecfd; --warn: #8a5a00; --warn-soft: #fbf0d4;
+  --err: #b42318; --err-soft: #fde7e4; --pend: #0d6e6e; --pend-soft: #dcf2f0;
+  --font: "Hiragino Sans", "Noto Sans JP", "Yu Gothic", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161a; --panel: #1c1f24; --fg: #e6e8eb; --muted: #9aa3ad; --line: #353a42;
+    --accent: #7c9bff; --accent-soft: #232c4d; --warn: #f0c36a; --warn-soft: #3a2f12;
+    --err: #ff8f84; --err-soft: #43201d; --pend: #6ed0cb; --pend-soft: #12332f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14161a; --panel: #1c1f24; --fg: #e6e8eb; --muted: #9aa3ad; --line: #353a42;
+  --accent: #7c9bff; --accent-soft: #232c4d; --warn: #f0c36a; --warn-soft: #3a2f12;
+  --err: #ff8f84; --err-soft: #43201d; --pend: #6ed0cb; --pend-soft: #12332f; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); line-height: 1.65;
+  padding: 0 max(16px, env(safe-area-inset-right, 0px)) 120px max(16px, env(safe-area-inset-left, 0px)); }
+.wrap { max-width: 680px; margin: 0 auto; }
+header { display: flex; align-items: center; gap: 10px; padding: 14px 0 6px; }
+header h1 { font-size: 1.15rem; margin: 0; flex: 1; }
+.chip { font-size: .78rem; padding: 2px 10px; border-radius: 99px; background: var(--pend-soft); color: var(--pend); white-space: nowrap; }
+.chip.off { background: var(--warn-soft); color: var(--warn); }
+button { font: inherit; font-size: .92rem; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button[aria-disabled="true"] { opacity: .4; cursor: not-allowed; }
+button.link { border: 0; background: none; color: var(--accent); padding: 4px 8px; }
+button.ghost { border: 0; background: none; color: var(--muted); padding: 4px 8px; }
+.tabs { display: flex; gap: 6px; margin: 4px 0 12px; }
+.tab[aria-selected="true"] { background: var(--accent-soft); border-color: var(--accent); }
+textarea, input[type="text"], input[type="date"], input[type="url"] { font: inherit; width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--panel); color: var(--fg); }
+textarea { min-height: 76px; resize: vertical; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row.end { justify-content: flex-end; }
+.grow { flex: 1; min-width: 0; }
+.hint { font-size: .85rem; color: var(--warn); background: var(--warn-soft); border-radius: 8px; padding: 6px 10px; margin-top: 8px; }
+.banner { font-size: .88rem; color: var(--warn); background: var(--warn-soft); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
+.notice { font-size: .88rem; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; display: flex; gap: 8px; align-items: flex-start; }
+.notice.error { color: var(--err); background: var(--err-soft); }
+.notice.warn { color: var(--warn); background: var(--warn-soft); }
+.notice span { flex: 1; }
+.meta { font-size: .8rem; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.badge { font-size: .72rem; padding: 0 8px; border-radius: 99px; background: var(--pend-soft); color: var(--pend); }
+.body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0; }
+.thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.thumbs img { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+.thumbs .x { position: relative; }
+.thumbs .x button { position: absolute; top: -6px; right: -6px; padding: 0 6px; border-radius: 99px; font-size: .8rem; }
+.links a { display: block; font-size: .88rem; overflow-wrap: anywhere; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.chips .c { font-size: .82rem; background: var(--accent-soft); border-radius: 99px; padding: 2px 6px 2px 10px; display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
+.acts { display: flex; gap: 4px; margin-top: 4px; }
+.empty { text-align: center; color: var(--muted); padding: 36px 0; }
+#top { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: 20px; border-radius: 99px; width: 46px; height: 46px; padding: 0; font-size: 1.1rem; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+#undo { position: fixed; left: 50%; transform: translateX(-50%); bottom: 20px; width: min(560px, calc(100% - 96px)); display: grid; gap: 6px; }
+#undo .u { background: var(--fg); color: var(--bg); border-radius: 10px; padding: 8px 12px; display: flex; gap: 10px; align-items: center; font-size: .9rem; }
+#undo .u span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#undo .u button { background: none; border: 1px solid currentColor; color: inherit; padding: 3px 10px; }
+#pull { text-align: center; color: var(--muted); font-size: .85rem; height: 0; overflow: hidden; transition: height .15s; }
+#pull.show { height: 28px; }
+details.demo { margin-top: 24px; font-size: .88rem; }
+details.demo summary { cursor: pointer; color: var(--muted); }
+details.demo .row { margin-top: 8px; }
+dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--fg); max-width: min(440px, calc(100% - 32px)); }
+dialog label { display: block; margin: 8px 0; }
+.small { font-size: .82rem; color: var(--muted); }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ひとり用つぶやき</h1>
+    <span id="status" class="chip" role="status">オンライン</span>
+    <button id="btn-refresh" class="ghost" title="更新">更新</button>
+    <button id="btn-settings" class="ghost" title="設定">設定</button>
+  </header>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-main" aria-selected="true">書く・見る</button>
+    <button class="tab" role="tab" id="tab-search" aria-selected="false">探す</button>
+  </div>
+  <div id="notices" aria-live="polite"></div>
+  <div id="pull">引っぱって更新</div>
+
+  <section id="pane-main">
+    <div class="card" id="compose">
+      <textarea id="text" placeholder="いま何してる？" aria-label="投稿の本文"></textarea>
+      <div class="chips" id="draft-parts"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="btn-attach" type="button">＋画像</button>
+        <button id="btn-link" type="button">＋リンク</button>
+        <span class="grow"></span>
+        <button id="btn-send" class="primary" aria-disabled="true">投稿</button>
+      </div>
+      <div class="row hidden" id="link-row" style="margin-top:8px">
+        <input type="url" id="link-url" class="grow" placeholder="https://" aria-label="リンクのURL">
+        <button id="btn-link-add" type="button">追加</button>
+      </div>
+      <div id="send-hint" class="hint hidden" role="alert">投稿を入力してから押してください</div>
+      <input type="file" id="file" accept="image/*" multiple class="hidden">
+    </div>
+    <div id="offline-banner" class="banner hidden">圏外です。直近24時間の投稿だけ見られます。書いた投稿は、つながったら自動で反映します。</div>
+    <div id="list"></div>
+    <div id="sentinel" style="height:1px"></div>
+  </section>
+
+  <section id="pane-search" class="hidden">
+    <div class="card">
+      <div class="row">
+        <label class="grow">始め<input type="date" id="s-from"></label>
+        <label class="grow">終わり<input type="date" id="s-to"></label>
+      </div>
+      <label style="display:block;margin-top:8px">単語<input type="text" id="s-word" placeholder="含まれる言葉"></label>
+      <div class="row end" style="margin-top:8px"><button id="btn-search" class="primary">探す</button></div>
+    </div>
+    <div id="s-result"></div>
+  </section>
+
+  <details class="demo hidden" id="demo">
+    <summary>確認用の操作（お試しのときだけ出ます）</summary>
+    <div class="row">
+      <button id="d-off">圏外にする</button>
+      <button id="d-other-write">別の端末で書く</button>
+      <button id="d-other-edit">別の端末で直す</button>
+      <button id="d-other-del">別の端末で消す</button>
+      <button id="d-fail">次の書き込みを失敗させる</button>
+      <button id="d-30">30秒進める</button>
+      <button id="d-24h">24時間進める</button>
+    </div>
+    <p class="small" id="d-info"></p>
+  </details>
+</div>
+
+<div id="undo" aria-live="polite"></div>
+<button id="top" class="hidden" aria-label="いちばん上へ" title="いちばん上へ">↑</button>
+
+<dialog id="dlg">
+  <form method="dialog" id="dlg-form">
+    <h2 style="font-size:1.05rem;margin:0 0 8px">設定</h2>
+    <label><input type="radio" name="mode" value="demo"> お試し（この画面の中だけで動く模擬のDropbox）</label>
+    <label><input type="radio" name="mode" value="dropbox"> Dropbox につなぐ</label>
+    <label id="token-label" class="hidden">アクセストークン
+      <input type="text" id="token" autocomplete="off" placeholder="Dropbox アプリのトークンを貼る">
+    </label>
+    <p class="small">トークンはこの端末の中にだけ保存します。記録は Dropbox の <b>/solo_tweet/posts</b> に置きます（AI にはこの場所を1回教えます）。</p>
+    <div class="row end"><button value="cancel">やめる</button><button id="dlg-ok" class="primary" value="ok">保存して開き直す</button></div>
+  </form>
+</dialog>
+
+<script src="runtime.js"></script>
+<script src="dropbox.js"></script>
+<script>
+(async function () {
+  'use strict';
+  try {
+  const $ = (s) => document.querySelector(s);
+  const store = (() => { try { localStorage.setItem('_t', '1'); localStorage.removeItem('_t'); return localStorage; } catch (e) { return new SoloRuntime.MemStorage(); } })();
+  const mode = store.getItem('solo_tweet_mode') || 'demo';
+  const token = store.getItem('solo_tweet_token') || '';
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fmt = (t) => {
+    const d = new Date(t * 1000), n = new Date(), p = (x) => String(x).padStart(2, '0');
+    return (d.getFullYear() === n.getFullYear() ? '' : d.getFullYear() + '/') + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  };
+
+  // ---- WASM と実行部の用意 ----
+  let bytes;
+  if (window.SPECGAP_WASM_B64) bytes = Uint8Array.from(atob(window.SPECGAP_WASM_B64), (c) => c.charCodeAt(0));
+  else bytes = new Uint8Array(await (await fetch('specgap_app.wasm')).arrayBuffer());
+  const mock = mode === 'demo' ? new SoloDropbox.MockDropbox() : null;
+  const dropbox = mock || new SoloDropbox.RealDropbox(token);
+  const engine = await SoloRuntime.Engine.create({ wasmBytes: bytes, storage: store, key: 'solo_tweet_state_' + mode, dropbox, online: navigator.onLine });
+  window.engine = engine; window.mock = mock; // 確認用
+
+  // ---- 書く（下書き） ----
+  const draft = { 添付: [], リンク: [] };
+  const sendBtn = $('#send-btn') || $('#btn-send');
+  const partsHtml = (ids, closeAttr) => ids.map((id) => {
+    const p = engine.state.部品[id] || {};
+    const label = p.種類 === 'link' ? p.url : p.名前;
+    return `<span class="c">${esc(label || id)}<button class="ghost" ${closeAttr}="${id}" aria-label="外す">×</button></span>`;
+  }).join('');
+  function renderDraft() {
+    $('#draft-parts').innerHTML = partsHtml(draft.添付, 'data-dx') + partsHtml(draft.リンク, 'data-dl');
+    const empty = !$('#text').value.trim() && !draft.添付.length && !draft.リンク.length;
+    sendBtn.setAttribute('aria-disabled', empty ? 'true' : 'false');
+    if (!empty) $('#send-hint').classList.add('hidden');
+  }
+  $('#text').addEventListener('input', renderDraft);
+  $('#draft-parts').addEventListener('click', (e) => {
+    const x = e.target.closest('[data-dx]'), l = e.target.closest('[data-dl]');
+    if (x) draft.添付 = draft.添付.filter((i) => i !== x.dataset.dx);
+    if (l) draft.リンク = draft.リンク.filter((i) => i !== l.dataset.dl);
+    renderDraft();
+  });
+  function readImage(file) {
+    return new Promise((resolve) => {
+      const fr = new FileReader();
+      fr.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const k = Math.min(1, 1280 / Math.max(img.width, img.height));
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = () => resolve(fr.result);
+        img.src = fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+  async function addFiles(files) {
+    const ids = [];
+    for (const f of files) ids.push(engine.部品を足す({ 種類: 'file', 名前: f.name, dataURL: await readImage(f) }));
+    return ids;
+  }
+  $('#btn-attach').onclick = () => $('#file').click();
+  $('#file').onchange = async (e) => { draft.添付.push(...await addFiles([...e.target.files])); e.target.value = ''; renderDraft(); };
+  $('#btn-link').onclick = () => { $('#link-row').classList.toggle('hidden'); $('#link-url').focus(); };
+  $('#btn-link-add').onclick = () => {
+    const u = $('#link-url').value.trim();
+    if (!u) return;
+    draft.リンク.push(engine.部品を足す({ 種類: 'link', url: u }));
+    $('#link-url').value = ''; $('#link-row').classList.add('hidden'); renderDraft();
+  };
+  let hintTimer;
+  sendBtn.onclick = async () => {
+    if (sendBtn.getAttribute('aria-disabled') === 'true') {
+      $('#send-hint').classList.remove('hidden');
+      clearTimeout(hintTimer); hintTimer = setTimeout(() => $('#send-hint').classList.add('hidden'), 4000);
+      return;
+    }
+    const r = await engine.投稿する($('#text').value.trim(), draft.添付, draft.リンク);
+    if (r && r.結果 === '空') return;
+    $('#text').value = ''; draft.添付 = []; draft.リンク = []; renderDraft();
+    window.scrollTo({ top: 0 });
+  };
+
+  // ---- 見る（一覧） ----
+  let count = 20, editing = null;
+  function postHtml(p, withActs) {
+    const thumbs = p.添付.map((id) => { const x = engine.state.部品[id]; return x && x.dataURL ? `<img src="${x.dataURL}" alt="${esc(x.名前 || '添付')}">` : ''; }).join('');
+    const links = p.リンク.map((id) => { const x = engine.state.部品[id]; return x ? `<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.url)}</a>` : ''; }).join('');
+    const pend = p.記録 === '端末保存済' ? '<span class="badge" title="まだDropboxに記録していません">反映前</span>' : '';
+    return `<article class="card post" data-id="${p.投稿ID}">
+      <div class="meta"><time>${fmt(p.書いた日時)}</time>${pend}</div>
+      <div class="body">${esc(p.本文)}</div>
+      ${thumbs ? `<div class="thumbs">${thumbs}</div>` : ''}${links ? `<div class="links">${links}</div>` : ''}
+      ${withActs ? '<div class="acts"><button class="link" data-act="edit">直す</button><button class="link" data-act="del">消す</button></div>' : ''}
+    </article>`;
+  }
+  function editHtml(p) {
+    const th = editing.添付.map((id) => { const x = engine.state.部品[id]; return `<span class="x">${x && x.dataURL ? `<img src="${x.dataURL}" alt="">` : esc(id)}<button data-ex="${id}" aria-label="外す">×</button></span>`; }).join('');
+    return `<article class="card post editing" data-id="${p.投稿ID}">
+      <textarea data-e="text" aria-label="本文を直す">${esc(editing.text)}</textarea>
+      <div class="thumbs">${th}</div><div class="chips">${partsHtml(editing.リンク, 'data-el')}</div>
+      <div class="row" style="margin-top:8px"><button data-act="e-attach">＋画像</button><button data-act="e-link">＋リンク</button></div>
+      <div class="row hidden" data-e="link-row" style="margin-top:6px"><input type="url" data-e="link-url" class="grow" placeholder="https://"><button data-act="e-link-add">追加</button></div>
+      <div class="hint hidden" data-e="hint" role="alert">空のままでは保存できません。何か入力してください</div>
+      <div class="row end" style="margin-top:8px"><button data-act="e-cancel">やめる</button><button class="primary" data-act="e-save">保存</button></div>
+      <input type="file" data-e="file" accept="image/*" multiple class="hidden">
+    </article>`;
+  }
+  function renderList() {
+    const posts = engine.一覧(count);
+    const box = $('#list');
+    const keep = editing && box.querySelector('[data-e="text"]');
+    if (keep) editing.text = keep.value;
+    let html = '';
+    if (!posts.length) html = `<div class="empty">${engine.loading ? '読み込み中' : '空です'}</div>`;
+    else {
+      if (engine.loading) html += '<div class="small" style="text-align:center">読み込み中…</div>';
+      html += posts.map((p) => (editing && editing.id === p.投稿ID ? editHtml(p) : postHtml(p, true))).join('');
+    }
+    box.innerHTML = html;
+    if (keep) { const t = box.querySelector('[data-e="text"]'); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }
+    $('#offline-banner').classList.toggle('hidden', engine.online);
+    const st = $('#status');
+    st.textContent = engine.online ? 'オンライン' : '圏外';
+    st.classList.toggle('off', !engine.online);
+  }
+  $('#list').addEventListener('click', async (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const card = b.closest('.post');
+    const id = card && card.dataset.id;
+    const post = id && engine.state.保存.投稿[id];
+    const act = b.dataset.act;
+    if (b.dataset.ex) { editing.添付 = editing.添付.filter((i) => i !== b.dataset.ex); return renderList(); }
+    if (b.dataset.el) { editing.リンク = editing.リンク.filter((i) => i !== b.dataset.el); return renderList(); }
+    if (act === 'edit') { editing = { id, text: post.本文, 添付: [...post.添付], リンク: [...post.リンク] }; renderList(); const t = $('#list [data-e="text"]'); if (t) t.focus(); }
+    else if (act === 'del') { await engine.消す(id); }
+    else if (act === 'e-cancel') { editing = null; renderList(); }
+    else if (act === 'e-attach') card.querySelector('[data-e="file"]').click();
+    else if (act === 'e-link') card.querySelector('[data-e="link-row"]').classList.toggle('hidden');
+    else if (act === 'e-link-add') {
+      const u = card.querySelector('[data-e="link-url"]').value.trim();
+      if (u) { editing.text = card.querySelector('[data-e="text"]').value; editing.リンク.push(engine.部品を足す({ 種類: 'link', url: u })); renderList(); }
+    } else if (act === 'e-save') {
+      const text = card.querySelector('[data-e="text"]').value.trim();
+      if (!text && !editing.添付.length && !editing.リンク.length) { card.querySelector('[data-e="hint"]').classList.remove('hidden'); return; }
+      const e2 = editing; editing = null;
+      await engine.直す(e2.id, text, e2.添付, e2.リンク);
+    }
+  });
+  $('#list').addEventListener('change', async (e) => {
+    if (e.target.dataset.e === 'file' && editing) {
+      editing.text = e.target.closest('.post').querySelector('[data-e="text"]').value;
+      editing.添付.push(...await addFiles([...e.target.files]));
+      renderList();
+    }
+  });
+
+  // ---- 探す ----
+  const day = (v, end) => { if (!v) return null; const d = new Date(v + 'T00:00:00'); return Math.floor(d.getTime() / 1000) + (end ? 86399 : 0); };
+  $('#btn-search').onclick = () => {
+    const rows = engine.探す(day($('#s-from').value), day($('#s-to').value, true), $('#s-word').value.trim());
+    $('#s-result').innerHTML = rows.length ? rows.map((p) => postHtml(p, false)).join('') : '<div class="empty">1件もありませんでした</div>';
+  };
+  const showTab = (name) => {
+    $('#pane-main').classList.toggle('hidden', name !== 'main');
+    $('#pane-search').classList.toggle('hidden', name !== 'search');
+    $('#tab-main').setAttribute('aria-selected', name === 'main');
+    $('#tab-search').setAttribute('aria-selected', name === 'search');
+  };
+  $('#tab-main').onclick = () => showTab('main');
+  $('#tab-search').onclick = () => showTab('search');
+
+  // ---- 消したあと30秒の「元に戻す」 ----
+  function renderUndo() {
+    const now = engine.now();
+    $('#undo').innerHTML = engine.state.待ち.filter((w) => w.名前 === '削除猶予').map((w) => {
+      const p = engine.state.保存.投稿[w.引数.投稿ID];
+      const left = Math.max(0, w.期限 - now);
+      return `<div class="u" data-id="${w.引数.投稿ID}"><span>削除しました：${esc((p && p.本文 || '').slice(0, 24) || '（本文なし）')}</span><b class="left">${left}</b><button data-undo="${w.引数.投稿ID}">元に戻す</button></div>`;
+    }).join('');
+  }
+  $('#undo').addEventListener('click', (e) => { const b = e.target.closest('[data-undo]'); if (b) engine.元に戻す(b.dataset.undo); });
+
+  // ---- お知らせ ----
+  function notice(kind, text, id) {
+    const div = document.createElement('div');
+    div.className = 'notice ' + kind;
+    div.dataset.id = id || '';
+    div.innerHTML = `<span>${esc(text)}</span><button class="ghost" aria-label="閉じる">×</button>`;
+    div.querySelector('button').onclick = () => div.remove();
+    $('#notices').prepend(div);
+  }
+
+  // ---- 引っぱって更新・トップへ ----
+  let y0 = null;
+  window.addEventListener('touchstart', (e) => { y0 = window.scrollY <= 0 ? e.touches[0].clientY : null; }, { passive: true });
+  window.addEventListener('touchmove', (e) => { if (y0 !== null) $('#pull').classList.toggle('show', e.touches[0].clientY - y0 > 20); }, { passive: true });
+  window.addEventListener('touchend', (e) => {
+    const dy = y0 !== null && e.changedTouches[0] ? e.changedTouches[0].clientY - y0 : 0;
+    $('#pull').classList.remove('show');
+    if (dy > 70) engine.同期する();
+    y0 = null;
+  });
+  window.addEventListener('scroll', () => $('#top').classList.toggle('hidden', window.scrollY < 300), { passive: true });
+  $('#top').onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+  new IntersectionObserver((en) => { if (en[0].isIntersecting && engine.一覧(count).length >= count) { count += 20; renderList(); } }).observe($('#sentinel'));
+  $('#btn-refresh').onclick = () => engine.同期する();
+
+  // ---- つながり具合・時間 ----
+  window.addEventListener('offline', () => { engine.online = false; renderList(); });
+  window.addEventListener('online', () => engine.同期する());
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) engine.同期する(); });
+  setInterval(() => {
+    const posts = Object.values(engine.state.保存.投稿 || {});
+    if (posts.some((p) => p.状態 === '投稿済' && p.記録 === '端末保存済') || engine.state.再送消す.length) engine.同期する();
+  }, 30000);
+
+  engine.on((ev) => {
+    if (ev.type === 'changed' || ev.type === 'online') { renderList(); renderUndo(); }
+    else if (ev.type === 'tick') { renderUndo(); }
+    else if (ev.type === 'notice') notice(ev.kind, ev.text, ev.id);
+    else if (ev.type === 'process' && ev.処理 === '未反映の通知' && ev.結果 === '通知済') notice('warn', '24時間たちましたが、まだDropboxに記録できていない投稿があります。投稿は端末に残しています。', '');
+  });
+
+  // ---- 設定 ----
+  $('#btn-settings').onclick = () => {
+    document.querySelector(`input[name="mode"][value="${mode}"]`).checked = true;
+    $('#token').value = token; $('#token-label').classList.toggle('hidden', mode !== 'dropbox');
+    $('#dlg').showModal();
+  };
+  document.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener('change', () => $('#token-label').classList.toggle('hidden', r.value !== 'dropbox' || !r.checked)));
+  $('#dlg-form').addEventListener('submit', (e) => {
+    if (e.submitter && e.submitter.value === 'ok') {
+      store.setItem('solo_tweet_mode', document.querySelector('input[name="mode"]:checked').value);
+      store.setItem('solo_tweet_token', $('#token').value.trim());
+      location.reload();
+    }
+  });
+
+  // ---- 確認用の操作（お試しのみ） ----
+  if (mock) {
+    $('#demo').classList.remove('hidden');
+    const info = (t) => { $('#d-info').textContent = t; };
+    $('#d-off').onclick = () => {
+      mock.offline = !mock.offline;
+      $('#d-off').textContent = mock.offline ? 'つなぐ' : '圏外にする';
+      if (mock.offline) { engine.online = false; renderList(); info('圏外のふりをしています。書く・直す・消すは端末の中で進みます。'); }
+      else { info('つないで、反映と取り込みをしました。'); engine.同期する(); }
+    };
+    $('#d-other-write').onclick = () => {
+      const t = engine.now();
+      mock.他端末で書く({ 投稿ID: 'x' + t + Math.random().toString(36).slice(2, 5), 本文: 'PCで書いた投稿（別の端末のふり） ' + fmt(t), 添付: [], リンク: [], 書いた日時: t, 最後に操作した日時: t });
+      info('別の端末が書きました。「更新」か画面を引っぱると取り込みます。');
+    };
+    $('#d-other-edit').onclick = () => {
+      const ids = [...mock.posts.keys()];
+      if (!ids.length) return info('Dropboxに記録済みの投稿がまだありません。');
+      const id = ids[ids.length - 1];
+      mock.他端末で直す(id, '（別の端末で直した）' + fmt(engine.now()), engine.now());
+      info('別の端末が、いちばん新しい記録済みの投稿を直しました。「更新」で取り込みます。');
+    };
+    $('#d-other-del').onclick = () => {
+      const ids = [...mock.posts.keys()];
+      if (!ids.length) return info('Dropboxに記録済みの投稿がまだありません。');
+      mock.他端末で消す(ids[ids.length - 1]);
+      info('別の端末が、いちばん新しい記録済みの投稿を消しました。「更新」で取り込みます。');
+    };
+    $('#d-fail').onclick = () => { mock.failNext = 1; info('次のDropboxへの書き込みを1回だけ失敗させます（原因を表示する確認）。'); };
+    $('#d-30').onclick = () => { engine.skew += 30; engine.tick(); renderUndo(); info('時計を30秒進めました。'); };
+    $('#d-24h').onclick = () => { engine.skew += 86400; engine.tick(); info('時計を24時間進めました。'); };
+  }
+
+  renderDraft(); renderList(); renderUndo();
+  engine.start();
+  engine.同期する();
+  window.appReady = true;
+  } catch (e) {
+    document.body.insertAdjacentHTML('afterbegin', '<p style="color:#b42318;padding:16px">起動できませんでした：' + String(e && e.message || e).replace(/[<&]/g, '') + '</p>');
+    throw e;
+  }
+})();
+</script>
+</body>
+</html>
