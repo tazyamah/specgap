@@ -328,6 +328,13 @@
       "usecase": "UC5",
       "status": "answered",
       "answer": "あとから直したほう（直した時刻が新しいほう）を残す"
+    },
+    {
+      "id": "Q16",
+      "text": "まだDropboxに記録できていない投稿（端末保存済）を、消せるか",
+      "usecase": "UC6",
+      "status": "open",
+      "answer": ""
     }
   ],
   "extras": [
@@ -844,6 +851,15 @@
       ],
       "who": "tazyamah",
       "when": "2026-10-26T00:08"
+    },
+    {
+      "id": "J49",
+      "rule": "書く・直す・消すは、まず端末の中で確定し、Dropboxへはあとから反映する（J28・J46・J47を1つのルールにまとめたもの）",
+      "sources": [
+        "1"
+      ],
+      "who": "tazyamah",
+      "when": "2026-10-26T00:19"
     }
   ]
 }
