@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from specgap_lang.check import ERROR, QUESTION, check
-from specgap_lang.examples import compare_examples, run_crate, runner_source, write_crate
+from specgap_lang.examples import HOST_MOD, compare_examples, run_crate, runner_source, write_crate
+from specgap_lang.hostgen import host_source
 from specgap_lang.parser import ParseError, parse
 from specgap_lang.plan import A_ONLY, B_ONLY, DIFF, compare_static, read_plan
 from specgap_lang.rustgen import generate
@@ -297,8 +298,10 @@ def test_つぶやきの検査は通り_計画と静的に一致する():
 
 
 def test_つぶやきの生成物はコミットしたものと一致する():
-    committed = TW / "rust" / "src" / "lib.rs"
-    assert committed.read_text() == generate(chk(TW_CODE)), "python -m specgap_lang rust で作り直してください"
+    ck = chk(TW_CODE)
+    committed = TW / "rust" / "src"
+    assert (committed / "lib.rs").read_text() == generate(ck) + HOST_MOD, "python -m specgap_lang rust --host で作り直してください"
+    assert (committed / "host.rs").read_text() == host_source(ck)
 
 
 @needs_cargo

@@ -184,6 +184,10 @@ class Gen:
             self.w("#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]")
             self.w(f"pub enum {s.name} {{ {', '.join(vs)} }}")
             self.w(f"impl {s.name} {{")
+            self.w("    pub fn 名前から(s: &str) -> Option<Self> {\n        match s {")
+            for v in vs:
+                self.w(f'            "{v}" => Some({s.name}::{v}),')
+            self.w("            _ => None,\n        }\n    }")
             self.w("    pub fn 名前(&self) -> &'static str {\n        match self {")
             for v in vs:
                 self.w(f'            {s.name}::{v} => "{v}",')
@@ -278,6 +282,19 @@ class Gen:
                     self.w(f'            {r.name}::{v}({", ".join(names)}) => format!("{v}({fmt})", {shown}),')
                 else:
                     self.w(f'            {r.name}::{v} => "{v}".to_string(),')
+            self.w("        }\n    }")
+            self.w("    pub fn 名前(&self) -> &'static str {\n        match self {")
+            for v, ts in r.variants:
+                self.w(f'            {r.name}::{v}' + ("(..)" if ts else "") + f' => "{v}",')
+            self.w("        }\n    }")
+            self.w("    pub fn 引数(&self) -> Vec<String> {\n        match self {")
+            for v, ts in r.variants:
+                if ts:
+                    names = [f"a{i}" for i in range(len(ts))]
+                    shown = ", ".join(f'format!("{{}}", {show_expr(t, n)})' for t, n in zip(ts, names))
+                    self.w(f'            {r.name}::{v}({", ".join(names)}) => vec![{shown}],')
+                else:
+                    self.w(f'            {r.name}::{v} => vec![],')
             self.w("        }\n    }\n}\n")
 
     def flows(self):
@@ -530,7 +547,9 @@ class ProcGen:
         g.w("}\n")
 
 
-def cargo_toml(name: str) -> str:
+def cargo_toml(name: str, host: bool = False) -> str:
+    crate_type = 'crate-type = ["cdylib", "rlib"]\n' if host else ""
+    opt = 'opt-level = "s"\n' if host else ""
     return f'''[package]
 name = "{name}"
 version = "0.1.0"
@@ -538,9 +557,9 @@ edition = "2021"
 
 [lib]
 path = "src/lib.rs"
-
+{crate_type}
 [profile.release]
-overflow-checks = true
+{opt}overflow-checks = true
 '''
 
 

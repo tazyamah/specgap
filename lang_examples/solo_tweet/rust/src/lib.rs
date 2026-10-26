@@ -58,6 +58,14 @@ pub struct トリガ定義 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum 投稿状態 { 投稿済, 削除済, 完全削除済 }
 impl 投稿状態 {
+    pub fn 名前から(s: &str) -> Option<Self> {
+        match s {
+            "投稿済" => Some(投稿状態::投稿済),
+            "削除済" => Some(投稿状態::削除済),
+            "完全削除済" => Some(投稿状態::完全削除済),
+            _ => None,
+        }
+    }
     pub fn 名前(&self) -> &'static str {
         match self {
             投稿状態::投稿済 => "投稿済",
@@ -70,6 +78,13 @@ impl 投稿状態 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum 記録状態 { 端末保存済, 記録済 }
 impl 記録状態 {
+    pub fn 名前から(s: &str) -> Option<Self> {
+        match s {
+            "端末保存済" => Some(記録状態::端末保存済),
+            "記録済" => Some(記録状態::記録済),
+            _ => None,
+        }
+    }
     pub fn 名前(&self) -> &'static str {
         match self {
             記録状態::端末保存済 => "端末保存済",
@@ -168,6 +183,18 @@ impl 投稿結果 {
             投稿結果::空 => "空".to_string(),
         }
     }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            投稿結果::端末保存済(..) => "端末保存済",
+            投稿結果::空 => "空",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            投稿結果::端末保存済(a0) => vec![format!("{}", a0)],
+            投稿結果::空 => vec![],
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -182,6 +209,20 @@ impl 要求結果 {
             要求結果::要求済 => "要求済".to_string(),
             要求結果::投稿なし => "投稿なし".to_string(),
             要求結果::状態違い => "状態違い".to_string(),
+        }
+    }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            要求結果::要求済 => "要求済",
+            要求結果::投稿なし => "投稿なし",
+            要求結果::状態違い => "状態違い",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            要求結果::要求済 => vec![],
+            要求結果::投稿なし => vec![],
+            要求結果::状態違い => vec![],
         }
     }
 }
@@ -200,6 +241,20 @@ impl 確定結果 {
             確定結果::状態違い => "状態違い".to_string(),
         }
     }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            確定結果::確定済 => "確定済",
+            確定結果::投稿なし => "投稿なし",
+            確定結果::状態違い => "状態違い",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            確定結果::確定済 => vec![],
+            確定結果::投稿なし => vec![],
+            確定結果::状態違い => vec![],
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -212,6 +267,18 @@ impl 失敗表示結果 {
         match self {
             失敗表示結果::表示した => "表示した".to_string(),
             失敗表示結果::投稿なし => "投稿なし".to_string(),
+        }
+    }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            失敗表示結果::表示した => "表示した",
+            失敗表示結果::投稿なし => "投稿なし",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            失敗表示結果::表示した => vec![],
+            失敗表示結果::投稿なし => vec![],
         }
     }
 }
@@ -228,6 +295,20 @@ impl 通知結果 {
             通知結果::通知済 => "通知済".to_string(),
             通知結果::投稿なし => "投稿なし".to_string(),
             通知結果::状態違い => "状態違い".to_string(),
+        }
+    }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            通知結果::通知済 => "通知済",
+            通知結果::投稿なし => "投稿なし",
+            通知結果::状態違い => "状態違い",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            通知結果::通知済 => vec![],
+            通知結果::投稿なし => vec![],
+            通知結果::状態違い => vec![],
         }
     }
 }
@@ -248,6 +329,44 @@ impl 直す結果 {
             直す結果::状態違い => "状態違い".to_string(),
         }
     }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            直す結果::直した => "直した",
+            直す結果::投稿なし => "投稿なし",
+            直す結果::空 => "空",
+            直す結果::状態違い => "状態違い",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            直す結果::直した => vec![],
+            直す結果::投稿なし => vec![],
+            直す結果::空 => vec![],
+            直す結果::状態違い => vec![],
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum 新規取り込み結果 {
+    取り込んだ,
+}
+impl 新規取り込み結果 {
+    pub fn 表示(&self) -> String {
+        match self {
+            新規取り込み結果::取り込んだ => "取り込んだ".to_string(),
+        }
+    }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            新規取り込み結果::取り込んだ => "取り込んだ",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            新規取り込み結果::取り込んだ => vec![],
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -264,6 +383,22 @@ impl 取り込み結果 {
             取り込み結果::古い => "古い".to_string(),
             取り込み結果::削除済 => "削除済".to_string(),
             取り込み結果::投稿なし => "投稿なし".to_string(),
+        }
+    }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            取り込み結果::取り込んだ => "取り込んだ",
+            取り込み結果::古い => "古い",
+            取り込み結果::削除済 => "削除済",
+            取り込み結果::投稿なし => "投稿なし",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            取り込み結果::取り込んだ => vec![],
+            取り込み結果::古い => vec![],
+            取り込み結果::削除済 => vec![],
+            取り込み結果::投稿なし => vec![],
         }
     }
 }
@@ -284,6 +419,22 @@ impl 戻す取り込み結果 {
             戻す取り込み結果::投稿なし => "投稿なし".to_string(),
         }
     }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            戻す取り込み結果::取り込んだ => "取り込んだ",
+            戻す取り込み結果::古い => "古い",
+            戻す取り込み結果::状態違い => "状態違い",
+            戻す取り込み結果::投稿なし => "投稿なし",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            戻す取り込み結果::取り込んだ => vec![],
+            戻す取り込み結果::古い => vec![],
+            戻す取り込み結果::状態違い => vec![],
+            戻す取り込み結果::投稿なし => vec![],
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -302,6 +453,22 @@ impl 消し取り込み結果 {
             消し取り込み結果::投稿なし => "投稿なし".to_string(),
         }
     }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            消し取り込み結果::取り込んだ => "取り込んだ",
+            消し取り込み結果::古い => "古い",
+            消し取り込み結果::状態違い => "状態違い",
+            消し取り込み結果::投稿なし => "投稿なし",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            消し取り込み結果::取り込んだ => vec![],
+            消し取り込み結果::古い => vec![],
+            消し取り込み結果::状態違い => vec![],
+            消し取り込み結果::投稿なし => vec![],
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -316,6 +483,20 @@ impl 消す結果 {
             消す結果::削除済 => "削除済".to_string(),
             消す結果::投稿なし => "投稿なし".to_string(),
             消す結果::状態違い => "状態違い".to_string(),
+        }
+    }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            消す結果::削除済 => "削除済",
+            消す結果::投稿なし => "投稿なし",
+            消す結果::状態違い => "状態違い",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            消す結果::削除済 => vec![],
+            消す結果::投稿なし => vec![],
+            消す結果::状態違い => vec![],
         }
     }
 }
@@ -334,6 +515,20 @@ impl 戻す結果 {
             戻す結果::状態違い => "状態違い".to_string(),
         }
     }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            戻す結果::戻した => "戻した",
+            戻す結果::投稿なし => "投稿なし",
+            戻す結果::状態違い => "状態違い",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            戻す結果::戻した => vec![],
+            戻す結果::投稿なし => vec![],
+            戻す結果::状態違い => vec![],
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -348,6 +543,20 @@ impl 完全削除結果 {
             完全削除結果::消した => "消した".to_string(),
             完全削除結果::投稿なし => "投稿なし".to_string(),
             完全削除結果::状態違い => "状態違い".to_string(),
+        }
+    }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            完全削除結果::消した => "消した",
+            完全削除結果::投稿なし => "投稿なし",
+            完全削除結果::状態違い => "状態違い",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            完全削除結果::消した => vec![],
+            完全削除結果::投稿なし => vec![],
+            完全削除結果::状態違い => vec![],
         }
     }
 }
@@ -557,6 +766,46 @@ pub fn 直す(ctx: &直す文脈, 保存: &保存, 入力: &直す入力) -> 直
     書込列.push(書込::投稿_リンク(投稿.投稿ID.clone(), 入力.リンク.clone()));
     書込列.push(書込::投稿_最後に操作した日時(投稿.投稿ID.clone(), ctx.現在));
     return 直す出力 { 結果: 直す結果::直した, 書込: 書込列, 外部: 外部列 };
+}
+
+// ---- 処理 投稿の取り込み ----
+pub struct 投稿の取り込み入力 {
+    pub 本文: String,
+    pub 添付: BTreeSet<String>,
+    pub リンク: BTreeSet<String>,
+    pub 書いた日時: i64,
+    pub 操作日時: i64,
+}
+impl 投稿の取り込み入力 {
+    /// 外部から取り込むときの、範囲の宣言の検査
+    pub fn 検査(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
+/// 文脈：【参照】（配備時に埋まる）と、採番（実行のたびに基盤が代入）
+pub struct 投稿の取り込み文脈 {
+    pub 新投稿ID: String,
+}
+pub struct 投稿の取り込み出力 {
+    pub 結果: 新規取り込み結果,
+    pub 書込: Vec<書込>,
+    pub 外部: Vec<外部作用>,
+}
+pub fn 投稿の取り込み(ctx: &投稿の取り込み文脈, 保存: &保存, 入力: &投稿の取り込み入力) -> 投稿の取り込み出力 {
+    let mut 書込列: Vec<書込> = Vec::new();
+    let mut 外部列: Vec<外部作用> = Vec::new();
+    let 投稿 = 投稿 {
+        投稿ID: ctx.新投稿ID.clone(),
+        本文: 入力.本文.clone(),
+        添付: 入力.添付.clone(),
+        リンク: 入力.リンク.clone(),
+        書いた日時: 入力.書いた日時,
+        最後に操作した日時: 入力.操作日時,
+        状態: 投稿状態::投稿済,
+        記録: 記録状態::記録済,
+    };
+    書込列.push(書込::投稿_新規(投稿.clone()));
+    return 投稿の取り込み出力 { 結果: 新規取り込み結果::取り込んだ, 書込: 書込列, 外部: 外部列 };
 }
 
 // ---- 処理 直しの取り込み ----
@@ -893,6 +1142,12 @@ pub fn 直す_直す(r: &直す結果) -> 行き先 {
     }
 }
 
+pub fn 別端末の操作_投稿の取り込み(r: &新規取り込み結果) -> 行き先 {
+    match r {
+        新規取り込み結果::取り込んだ => 行き先::応答,
+    }
+}
+
 pub fn 別端末の操作_直しの取り込み(r: &取り込み結果) -> 行き先 {
     match r {
         取り込み結果::取り込んだ => 行き先::応答,
@@ -950,3 +1205,5 @@ pub const トリガ一覧: &[トリガ定義] = &[
     トリガ定義 { 名前: "削除猶予", 要因: &[("応答", "元に戻す", "元に戻す"), ("期限", "30", "完全に消す")] },
 ];
 
+
+pub mod host;

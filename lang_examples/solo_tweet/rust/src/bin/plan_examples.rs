@@ -502,4 +502,18 @@ fn main() {
             Ok(()) => println!("EX35\t一覧({})\t\t", 圏外で見る(&ctx, &保存, &入力).join(",")),
         }
     }
+    {
+        let mut 保存 = 保存::default();
+        let ctx = 投稿の取り込み文脈 { 新投稿ID: "N9".to_string() };
+        let 入力 = 投稿の取り込み入力 { 本文: "PCで書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 900i64, 操作日時: 950i64 };
+        match 入力.検査() {
+            Err(e) => println!("EX36\t入力不正({})\t\t", e),
+            Ok(()) => {
+                let 出力 = 投稿の取り込み(&ctx, &保存, &入力);
+                let 前 = 保存.clone();
+                保存.適用(出力.書込.clone());
+                println!("EX36\t{}\t{}\t{}", 出力.結果.表示(), 前.差分(&保存).join(";"), 出力.外部.iter().map(|e| e.表示()).collect::<Vec<_>>().join(";"));
+            }
+        }
+    }
 }

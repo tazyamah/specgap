@@ -72,6 +72,7 @@ def main(argv=None) -> int:
     r.add_argument("code")
     r.add_argument("-o", required=True)
     r.add_argument("--plan", help="具体例の実行用 bin も生成する")
+    r.add_argument("--host", action="store_true", help="画面（WASM）から呼ぶ窓口 host.rs と cdylib 設定も生成する")
     m = sub.add_parser("compare", help="plan の仕様書（①）とコードの突合。具体例も実行する")
     m.add_argument("code")
     m.add_argument("plan")
@@ -102,7 +103,7 @@ def main(argv=None) -> int:
         src, problems = runner_source(ck, rows)
         for p in problems:
             print(f"{p.kind}: {p.where}: {p.msg}")
-        write_crate(ck, lib, src, Path(a.o))
+        write_crate(ck, lib, src, Path(a.o), host=a.host)
         print(f"生成しました: {a.o}")
         return 0
     plan = read_plan(Path(a.plan).read_text())

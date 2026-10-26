@@ -155,10 +155,16 @@ def runner_source(ck: Checker, rows: list[dict]) -> tuple[str, list[Finding]]:
     return src + "\n".join(blocks) + "\n}\n", problems
 
 
-def write_crate(ck: Checker, lib_src: str, runner_src: str, dest: Path):
+HOST_MOD = "\npub mod host;\n"
+
+
+def write_crate(ck: Checker, lib_src: str, runner_src: str, dest: Path, host: bool = False):
     (dest / "src" / "bin").mkdir(parents=True, exist_ok=True)
-    (dest / "Cargo.toml").write_text(cargo_toml("specgap_app"))
-    (dest / "src" / "lib.rs").write_text(lib_src)
+    (dest / "Cargo.toml").write_text(cargo_toml("specgap_app", host))
+    (dest / "src" / "lib.rs").write_text(lib_src + (HOST_MOD if host else ""))
+    if host:
+        from .hostgen import host_source
+        (dest / "src" / "host.rs").write_text(host_source(ck))
     (dest / "src" / "bin" / "plan_examples.rs").write_text(runner_src)
 
 

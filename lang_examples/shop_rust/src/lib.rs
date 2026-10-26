@@ -58,6 +58,15 @@ pub struct トリガ定義 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum 注文状態 { 受付, 決済要求済, 完了, キャンセル }
 impl 注文状態 {
+    pub fn 名前から(s: &str) -> Option<Self> {
+        match s {
+            "受付" => Some(注文状態::受付),
+            "決済要求済" => Some(注文状態::決済要求済),
+            "完了" => Some(注文状態::完了),
+            "キャンセル" => Some(注文状態::キャンセル),
+            _ => None,
+        }
+    }
     pub fn 名前(&self) -> &'static str {
         match self {
             注文状態::受付 => "受付",
@@ -178,6 +187,22 @@ impl 受注結果 {
             受注結果::顧客なし => "顧客なし".to_string(),
         }
     }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            受注結果::受付(..) => "受付",
+            受注結果::在庫不足(..) => "在庫不足",
+            受注結果::商品なし(..) => "商品なし",
+            受注結果::顧客なし => "顧客なし",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            受注結果::受付(a0) => vec![format!("{}", a0)],
+            受注結果::在庫不足(a0) => vec![format!("{}", 集合表示(&a0))],
+            受注結果::商品なし(a0) => vec![format!("{}", 集合表示(&a0))],
+            受注結果::顧客なし => vec![],
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -196,6 +221,22 @@ impl 決済要求結果 {
             決済要求結果::合計ゼロ => "合計ゼロ".to_string(),
         }
     }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            決済要求結果::要求済 => "要求済",
+            決済要求結果::注文なし => "注文なし",
+            決済要求結果::状態違い => "状態違い",
+            決済要求結果::合計ゼロ => "合計ゼロ",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            決済要求結果::要求済 => vec![],
+            決済要求結果::注文なし => vec![],
+            決済要求結果::状態違い => vec![],
+            決済要求結果::合計ゼロ => vec![],
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -210,6 +251,20 @@ impl 待ち解除結果 {
             待ち解除結果::反映済 => "反映済".to_string(),
             待ち解除結果::注文なし => "注文なし".to_string(),
             待ち解除結果::状態違い => "状態違い".to_string(),
+        }
+    }
+    pub fn 名前(&self) -> &'static str {
+        match self {
+            待ち解除結果::反映済 => "反映済",
+            待ち解除結果::注文なし => "注文なし",
+            待ち解除結果::状態違い => "状態違い",
+        }
+    }
+    pub fn 引数(&self) -> Vec<String> {
+        match self {
+            待ち解除結果::反映済 => vec![],
+            待ち解除結果::注文なし => vec![],
+            待ち解除結果::状態違い => vec![],
         }
     }
 }
