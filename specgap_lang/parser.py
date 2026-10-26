@@ -107,7 +107,21 @@ class Parser:
             else:
                 raise ParseError(f"未知の定義「{kw}」です", line)
             self.skip_nl()
+        self.add_sync_state(p)
         return p
+
+    def add_sync_state(self, p: Program):
+        """保存先（外部）を持つデータには、未同期かどうかの状態「記録」を言語が足す（J63）。人は宣言しない"""
+        ext = [d for d in p.data if d.store]
+        if not ext:
+            return
+        for d in ext:
+            if any(f.name == "記録" for f in d.fields):
+                raise ParseError(f"データ {d.name} の「記録」は、保存先の宣言から言語が足します。書かないでください", d.line)
+            d.fields.append(Field("記録", Type("名前", target="記録状態")))
+        if any(s.name == "記録状態" for s in p.states):
+            raise ParseError("状態「記録状態」は、保存先の宣言から言語が足します。書かないでください", ext[0].line)
+        p.states.append(State("記録状態", initial="端末保存済", middle=["記録済"], endless=True, line=ext[0].line))
 
     def block_open(self):
         self.expect("{")
@@ -116,6 +130,7 @@ class Parser:
     # ---- データ ----
     def data(self, line) -> Data:
         name = self.name()
+        store = self.name() if self.accept("保存先") else None
         self.block_open()
         fields = []
         while not self.accept("}"):
@@ -131,7 +146,7 @@ class Parser:
                     f.optional = True
             fields.append(f)
             self.end_line()
-        return Data(name, fields, line)
+        return Data(name, fields, line, store)
 
     def range_opt(self):
         if self.peek().kind == "NUM":

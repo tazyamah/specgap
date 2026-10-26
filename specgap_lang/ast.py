@@ -33,6 +33,7 @@ class Data:
     name: str
     fields: list[Field]
     line: int = 0
+    store: Optional[str] = None  # 保存先（外部）。あれば、未同期かどうかの状態「記録」を言語が足す（J63）
 
 
 @dataclass

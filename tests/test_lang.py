@@ -380,7 +380,7 @@ def test_出来事の宣言は検査され_計画と突合される():
 
 def test_行き来を繰り返す状態は_終了なし_と書く():
     assert chk(TW_CODE).ok
-    ck = chk(mutate(TW_CODE, "  中間 記録済\n  終了 なし\n", "  中間 記録済\n"))
+    ck = chk(mutate(TW_CODE, "  終了 完全削除済\n", ""))
     assert any("終了" in m for m in msgs(ck, ERROR))
 
 
@@ -429,3 +429,12 @@ def test_外部作用の失敗の扱いが決まっていないと止まる():
     # 結果を待つ経路をフローから外す
     ck2 = chk(mutate(TW_CODE, "反映の要求: 要求済 → 待つ 書込待ち,", "反映の要求: 要求済 → 応答,"))
     assert any("失敗の扱い" in m and "Dropbox.書く" in m for m in msgs(ck2, ERROR))
+
+
+def test_保存先の宣言から未同期の状態を言語が足す():
+    ck = chk(TW_CODE)
+    assert ck.ok
+    assert "記録状態" in ck.states and "記録" in [f.name for f in ck.data["投稿"].fields]
+    # 人が書くとエラー（二重の宣言）
+    with pytest.raises(ParseError):
+        chk(mutate(TW_CODE, "  状態: 投稿状態\n}", "  状態: 投稿状態\n  記録: 記録状態\n}"))
