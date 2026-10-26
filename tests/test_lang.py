@@ -443,5 +443,5 @@ def test_保存先の宣言から未同期の状態を言語が足す():
 def test_失敗の理由への応答がトリガに無いと止まる():
     ck = chk(TW_CODE)
     assert ck.ok
-    ck2 = chk(mutate(TW_CODE, "  応答 容量不足 → 記録失敗の表示\n", ""))
+    ck2 = chk(mutate(TW_CODE, "  応答 容量不足 → 容量不足の表示\n", ""))
     assert any("容量不足" in m for m in msgs(ck2, ERROR))

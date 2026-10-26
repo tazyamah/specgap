@@ -142,7 +142,7 @@
       if (!c) return false;
       this.state.待ち = this.state.待ち.filter((x) => x !== w);
       await this.run(c.行き先, w.引数);
-      return true;
+      return c.行き先;
     }
     async tick() {
       const now = this.now();
@@ -205,8 +205,10 @@
         this.lastError[a.投稿ID] = err.message || String(err);
         // 圏外は失敗ではなく「あとで反映」（J28）。つながったとき再送する。原因が別にあるときだけ、すぐ表示する（J37）
         if (err.network) return;
-        await this.応答する('書込待ち', err.reason || 'その他の失敗', a.投稿ID);
-        this.お知らせ('error', '記録できませんでした（投稿は端末に残しています）。原因：' + this.lastError[a.投稿ID], a.投稿ID);
+        // 理由ごとに行き先の処理が違う（J65）。本人に出す案内は、どの処理に進んだかで決まる
+        const 行き先 = await this.応答する('書込待ち', err.reason || 'その他の失敗', a.投稿ID);
+        const 案内 = { 認証切れの表示: 'Dropbox の接続を確かめてください（トークンが切れているかもしれません）。', 容量不足の表示: 'Dropbox の空き容量を作ってください。' }[行き先] || '';
+        this.お知らせ('error', '記録できませんでした（投稿は端末に残しています）。' + 案内 + '原因：' + this.lastError[a.投稿ID], a.投稿ID);
       }
     }
 

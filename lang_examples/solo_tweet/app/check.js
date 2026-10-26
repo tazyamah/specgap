@@ -118,6 +118,7 @@ const post = async (page, t) => {
     await post(page, '失敗する書き込み');
     await page.waitForSelector('.notice.error');
     assert.ok((await page.textContent('.notice.error')).includes('容量がいっぱいです'));
+    assert.ok((await page.textContent('.notice.error')).includes('空き容量を作ってください'));
     assert.strictEqual(await page.locator('.badge').count(), 1);
     ok('Dropboxへの書き込みが失敗したら、原因をすぐ表示し、投稿は端末に残る');
     await page.click('#btn-refresh');
