@@ -149,8 +149,8 @@ class Checker:
                 if t.kind == "写像" and t.key not in self.data:
                     self.d(ERROR, "名前", f"{dt.name}.{f.name}", f"キーのデータ「{t.key}」が未定義です")
         for s in self.p.states:
-            if not s.initial or not s.final:
-                self.d(ERROR, "状態", f"状態 {s.name}", "初期と終了の状態は必須です")
+            if not s.initial or not (s.final or s.endless):
+                self.d(ERROR, "状態", f"状態 {s.name}", "初期と終了の状態は必須です（行き来を繰り返す状態は「終了 なし」と書きます）")
             known = {s.initial, *s.middle, *s.final}
             for a, b, _ in s.rejects:
                 for x in (a, b):
@@ -335,7 +335,7 @@ class Checker:
                         continue
                     seen.add(y)
                     todo += edges.get(y, set())
-                if not (seen & set(s.final)):
+                if not s.endless and not (seen & set(s.final)):
                     self.d(WARN, "状態", f"状態 {s.name}", f"「{x}」から終了の状態へ進む処理が宣言されていません")
 
     def check_invariants(self):

@@ -274,12 +274,11 @@
           await this.run(st.処理, { [key]: id });
         }
       }
-      // 直した投稿の書き込みが失敗したまま残っているもの（記録の状態では見分けられない。計画の穴）
+      // 圏外で書き込めなかった投稿のうち、待ちが残っているもの：待ちは残して、書き込みだけやり直す
       for (const id of [...this.state.再送書く]) {
         const p = posts()[id];
         if (!p || p.状態 !== '投稿済') this.state.再送書く = this.state.再送書く.filter((x) => x !== id);
-        else if (this.待っている('書込待ち', id)) await this.外部を実行({ 名前: 'Dropbox.書く', 引数: { 投稿ID: id } }); // 待ちは残っているので、書き込みだけやり直す
-        else await this.run('反映の要求', { 投稿ID: id });
+        else if (this.待っている('書込待ち', id)) await this.外部を実行({ 名前: 'Dropbox.書く', 引数: { 投稿ID: id } });
       }
       for (const id of [...this.state.再送消す]) await this.外部を実行({ 名前: 'Dropbox.消す', 引数: { 投稿ID: id } });
       await this.idle();

@@ -516,4 +516,34 @@ fn main() {
             }
         }
     }
+    {
+        let mut 保存 = 保存::default();
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "メモ".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に操作した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::記録済 });
+        let ctx = 未反映に戻す文脈 {  };
+        let 入力 = 未反映に戻す入力 { 投稿ID: "N1".to_string() };
+        match 入力.検査() {
+            Err(e) => println!("EX37\t入力不正({})\t\t", e),
+            Ok(()) => {
+                let 出力 = 未反映に戻す(&ctx, &保存, &入力);
+                let 前 = 保存.clone();
+                保存.適用(出力.書込.clone());
+                println!("EX37\t{}\t{}\t{}", 出力.結果.表示(), 前.差分(&保存).join(";"), 出力.外部.iter().map(|e| e.表示()).collect::<Vec<_>>().join(";"));
+            }
+        }
+    }
+    {
+        let mut 保存 = 保存::default();
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "メモ".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に操作した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::端末保存済 });
+        let ctx = 未反映に戻す文脈 {  };
+        let 入力 = 未反映に戻す入力 { 投稿ID: "N1".to_string() };
+        match 入力.検査() {
+            Err(e) => println!("EX38\t入力不正({})\t\t", e),
+            Ok(()) => {
+                let 出力 = 未反映に戻す(&ctx, &保存, &入力);
+                let 前 = 保存.clone();
+                保存.適用(出力.書込.clone());
+                println!("EX38\t{}\t{}\t{}", 出力.結果.表示(), 前.差分(&保存).join(";"), 出力.外部.iter().map(|e| e.表示()).collect::<Vec<_>>().join(";"));
+            }
+        }
+    }
 }

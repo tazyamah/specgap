@@ -177,7 +177,11 @@ class Parser:
             elif kw == "中間":
                 s.middle += self.comma_list(self.name)
             elif kw == "終了":
-                s.final += self.comma_list(self.name)
+                names = self.comma_list(self.name)
+                if names == ["なし"]:
+                    s.endless = True
+                else:
+                    s.final += names
             elif kw == "拒否":
                 a = self.name()
                 self.expect("→")

@@ -42,6 +42,7 @@ class State:
     middle: list[str] = field(default_factory=list)
     final: list[str] = field(default_factory=list)
     rejects: list[tuple[str, str, str]] = field(default_factory=list)
+    endless: bool = False  # 「終了 なし」：行き来を繰り返し、終わらない状態（記録済 ⇄ 端末保存済 など）
     line: int = 0
 
 

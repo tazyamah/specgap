@@ -45,16 +45,16 @@ python -m specgap_lang interview render 台帳.json -o plan.md  # plan（①）�
 
 ## 会話から起こした2つ目の例（ひとり用つぶやき）
 
-`lang_examples/solo_tweet/`：会話の台帳（ledger.json、判断J1〜J54）→ 計画書の節1〜7（plan_spec.md）→ コード（solo_tweet.sgl）→ 検査・突合・Rust生成（rust/）。
+`lang_examples/solo_tweet/`：会話の台帳（ledger.json、判断J1〜J55）→ 計画書の節1〜7（plan_spec.md）→ コード（solo_tweet.sgl）→ 検査・突合・Rust生成（rust/）。
 計画書とコードは機械で突合し、具体例を生成した Rust で実行して一致を確かめています（`python -m specgap_lang compare lang_examples/solo_tweet/solo_tweet.sgl lang_examples/solo_tweet/plan_spec.md`）。
-この例のために、型に「文字列」「日時」、条件に「かつ」、読むだけの処理に「問い合わせ」（対象・条件・絞り込み・並び・先頭）を足しました。具体例は36件。さらに、外の出来事（アプリを開いた・つながりが戻った・画面を引っぱった）をきっかけに処理を起こす「出来事」を、トリガの仲間として足しました（`各 問い合わせ → 処理`：問い合わせが返す投稿1件ずつに起こす／`外から 処理`：外から届く内容で起こす）。画面の実行部は、この宣言にしたがって処理を起こします。
+この例のために、型に「文字列」「日時」、条件に「かつ」、読むだけの処理に「問い合わせ」（対象・条件・絞り込み・並び・先頭）を足しました。具体例は38件。さらに、外の出来事（アプリを開いた・つながりが戻った・画面を引っぱった）をきっかけに処理を起こす「出来事」を、トリガの仲間として足しました（`各 問い合わせ → 処理`：問い合わせが返す投稿1件ずつに起こす／`外から 処理`：外から届く内容で起こす）。画面の実行部は、この宣言にしたがって処理を起こします。
 
 ### 画面（ブラウザで動く形）
 
 `rust --host` で、画面から呼ぶ窓口（host.rs。JSONを渡すとJSONで答える）つきの crate を作り、WASM にします。`lang_examples/solo_tweet/app/` の画面は、判断（投稿・直す・消す・取り込みなど）をすべてこの WASM に任せ、画面側は待ち（期限・応答）の管理、Dropbox への書き込み、端末への保存だけを受け持ちます。
 
 - `python lang_examples/solo_tweet/app/build.py` → `dist/solo_tweet.html`（1ファイル。お試しは模擬のDropbox、設定でトークンを入れると本物のDropbox）
-- `node lang_examples/solo_tweet/app/check.js` → ブラウザを自動で動かして25件を確認（Dropboxは模擬の応答）
+- `node lang_examples/solo_tweet/app/check.js` → ブラウザを自動で動かして26件を確認（Dropboxは模擬の応答）
 - 本物のDropboxとの接続は、この環境から届かないため未確認です。
 
 ## 検査が見つけるもの

@@ -102,6 +102,19 @@ const post = async (page, t) => {
     await page.waitForFunction(() => !document.querySelector('.badge'));
     ok('失敗した書き込みは次の更新でやり直される');
 
+    // 記録済みの投稿を直して、書き込みに失敗したとき：書いたときと同じ「反映前」に戻り、あとで再送される
+    await page.click('#d-fail');
+    await page.click('.post:first-child [data-act="edit"]');
+    await page.fill('.post.editing [data-e="text"]', '直しの再送');
+    await page.click('[data-act="e-save"]');
+    await page.evaluate(() => window.engine.idle());
+    await page.waitForSelector('.post:first-child .badge');
+    await page.click('#btn-refresh');
+    await page.evaluate(() => window.engine.idle());
+    await page.waitForFunction(() => !document.querySelector('.badge'));
+    assert.ok(await page.evaluate(() => [...window.mock.posts.values()].some((v) => JSON.parse(v.json).本文 === '直しの再送')));
+    ok('記録済みの投稿を直して書き込みに失敗すると「反映前」に戻り、次の更新で再送される');
+
     // 24時間たっても記録できていない
     await page.click('#d-off');
     await post(page, '24時間たつ投稿');

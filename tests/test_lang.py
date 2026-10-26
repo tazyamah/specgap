@@ -375,3 +375,9 @@ def test_出来事の宣言は検査され_計画と突合される():
     plan = TW_PLAN.replace("| 画面を引っぱった | 外から | 消しの取り込み |", "| 画面を引っぱった | 外から | 元に戻す |")
     fs = compare_static(spec, read_plan(plan))
     assert any(f.kind in (A_ONLY, B_ONLY) and "出来事" in f.where for f in fs)
+
+
+def test_行き来を繰り返す状態は_終了なし_と書く():
+    assert chk(TW_CODE).ok
+    ck = chk(mutate(TW_CODE, "  中間 記録済\n  終了 なし\n", "  中間 記録済\n"))
+    assert any("終了" in m for m in msgs(ck, ERROR))
