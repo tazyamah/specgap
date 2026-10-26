@@ -122,6 +122,7 @@ def definitions(ck: Checker) -> dict:
         "処理": {x.name: {"入力": [n for n, _ in x.inputs], "参照": [n for n, _ in x.refs], "採番": sorted(set(ck.infos[x.name].new_ids))} for x in p.processes},
         "問い合わせ": {q.name: {"入力": [n for n, _ in q.inputs], "参照": [n for n, _ in q.refs]} for q in p.queries},
         "フロー": flows,
+        "出来事": {ev.name: [{"種別": k, "問い合わせ": q, "処理": d} for k, q, d in ev.steps] for ev in p.events},
         "トリガ": [{"名前": t.name, "引数": [n for n, _ in t.params],
                   "要因": [{"種別": k, "キー": key, "秒": int(key) if k == "期限" else None, "行き先": d} for k, key, d in t.causes]} for t in p.triggers],
     }

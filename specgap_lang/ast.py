@@ -119,6 +119,16 @@ class Query:
 
 
 @dataclass
+class Event:
+    """外の出来事（アプリを開いた・つながりが戻った など）が、何を起こすか。
+    steps は ("各", 問い合わせ名, 処理名)＝問い合わせの結果の1件ずつに処理を起こす、
+    または ("外から", "", 処理名)＝出来事といっしょに外から届く入力で処理を起こす。"""
+    name: str
+    steps: list[tuple[str, str, str]] = field(default_factory=list)
+    line: int = 0
+
+
+@dataclass
 class Program:
     data: list[Data] = field(default_factory=list)
     states: list[State] = field(default_factory=list)
@@ -130,6 +140,7 @@ class Program:
     flows: list[Flow] = field(default_factory=list)
     triggers: list[Trigger] = field(default_factory=list)
     queries: list[Query] = field(default_factory=list)
+    events: list[Event] = field(default_factory=list)
 
 
 # ---- 式 ----

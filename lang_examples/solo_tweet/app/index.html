@@ -368,21 +368,21 @@ dialog label { display: block; margin: 8px 0; }
   window.addEventListener('touchend', (e) => {
     const dy = y0 !== null && e.changedTouches[0] ? e.changedTouches[0].clientY - y0 : 0;
     $('#pull').classList.remove('show');
-    if (dy > 70) engine.同期する();
+    if (dy > 70) engine.同期する('画面を引っぱった');
     y0 = null;
   });
   window.addEventListener('scroll', () => $('#top').classList.toggle('hidden', window.scrollY < 300), { passive: true });
   $('#top').onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
   new IntersectionObserver((en) => { if (en[0].isIntersecting && engine.一覧(count).length >= count) { count += 20; renderList(); } }).observe($('#sentinel'));
-  $('#btn-refresh').onclick = () => engine.同期する();
+  $('#btn-refresh').onclick = () => engine.同期する('画面を引っぱった');
 
   // ---- つながり具合・時間 ----
   window.addEventListener('offline', () => { engine.online = false; renderList(); });
-  window.addEventListener('online', () => engine.同期する());
+  window.addEventListener('online', () => engine.同期する('つながりが戻った'));
   document.addEventListener('visibilitychange', () => { if (!document.hidden) engine.同期する(); });
   setInterval(() => {
     const posts = Object.values(engine.state.保存.投稿 || {});
-    if (posts.some((p) => p.状態 === '投稿済' && p.記録 === '端末保存済') || engine.state.再送消す.length) engine.同期する();
+    if (posts.some((p) => p.状態 === '投稿済' && p.記録 === '端末保存済') || engine.state.再送消す.length) engine.同期する('つながりが戻った');
   }, 30000);
 
   engine.on((ev) => {
@@ -415,7 +415,7 @@ dialog label { display: block; margin: 8px 0; }
       mock.offline = !mock.offline;
       $('#d-off').textContent = mock.offline ? 'つなぐ' : '圏外にする';
       if (mock.offline) { engine.online = false; renderList(); info('圏外のふりをしています。書く・直す・消すは端末の中で進みます。'); }
-      else { info('つないで、反映と取り込みをしました。'); engine.同期する(); }
+      else { info('つないで、反映と取り込みをしました。'); engine.同期する('つながりが戻った'); }
     };
     $('#d-other-write').onclick = () => {
       const t = engine.now();

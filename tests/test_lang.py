@@ -358,3 +358,20 @@ def test_画面は生成したWASMの上で動く():
     assert subprocess.run(["python", str(app / "build.py")], capture_output=True, text=True).returncode == 0
     r = subprocess.run(["node", str(app / "check.js")], capture_output=True, text=True, cwd=app)
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
+
+
+# ---- 出来事（外の出来事をきっかけに処理を起こす）----
+def test_出来事の宣言は検査され_計画と突合される():
+    spec = build(chk(TW_CODE))
+    assert ("つながりが戻った", "各 未反映の投稿", "反映の要求") in spec["出来事"]
+    assert ("アプリを開いた", "外から", "投稿の取り込み") in spec["出来事"]
+    # 起こす処理の入力が「投稿ID だけ」でないと止まる
+    ck = chk(mutate(TW_CODE, "各 未反映の投稿 → 反映の要求\n  外から 投稿の取り込み\n  外から 直しの取り込み\n  外から 消しの取り込み\n}\n", "各 未反映の投稿 → 直す\n  外から 投稿の取り込み\n}\n"))
+    assert any("入力は" in m for m in msgs(ck, ERROR))
+    # 未定義の問い合わせ
+    ck = chk(mutate(TW_CODE, "各 未反映の投稿 → 反映の要求\n  外から 投稿の取り込み\n  外から 直しの取り込み\n  外から 消しの取り込み\n}\n", "各 ない問い合わせ → 反映の要求\n}\n"))
+    assert any("ない問い合わせ" in m for m in msgs(ck, ERROR))
+    # 計画と違う起こし方
+    plan = TW_PLAN.replace("| 画面を引っぱった | 外から | 消しの取り込み |", "| 画面を引っぱった | 外から | 元に戻す |")
+    fs = compare_static(spec, read_plan(plan))
+    assert any(f.kind in (A_ONLY, B_ONLY) and "出来事" in f.where for f in fs)

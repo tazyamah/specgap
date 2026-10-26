@@ -248,37 +248,45 @@
     }
 
     // ---- つながったときの同期 ----
-    async 同期する() {
+    // 外の出来事（アプリを開いた・画面を引っぱった・つながりが戻った）。起こす処理は、コードの「出来事」の宣言にしたがう
+    async 同期する(出来事 = 'アプリを開いた') {
       if (this.syncing) return;
       this.syncing = true;
       this.loading = true;
       this.emit({ type: 'changed' });
       try {
         await this.tick();
-        await this.再送する();
-        await this.取り込む();
+        await this.出来事を起こす(出来事);
       } finally {
         this.loading = false;
         this.syncing = false;
         this.変わった();
       }
     }
-    async 再送する() {
-      const posts = this.state.保存.投稿 || {};
-      const 要る = new Set(this.state.再送書く);
-      for (const id of Object.keys(posts)) {
-        const p = posts[id];
-        if (p.状態 === '投稿済' && p.記録 === '端末保存済' && !this.待っている('書込待ち', id)) 要る.add(id);
+    async 出来事を起こす(名前) {
+      const steps = this.defs.出来事[名前] || [];
+      const posts = () => this.state.保存.投稿 || {};
+      for (const st of steps) {
+        if (st.種別 !== '各') continue;
+        const key = this.defs.処理[st.処理].入力[0];
+        for (const id of this.問い合わせ(st.問い合わせ, {})) {
+          if (this.待っている('書込待ち', id)) continue; // もう待っている投稿は、24時間の数え直しになるので起こさない
+          await this.run(st.処理, { [key]: id });
+        }
       }
-      for (const id of 要る) {
-        const p = posts[id];
-        if (!p || p.状態 !== '投稿済') { this.state.再送書く = this.state.再送書く.filter((x) => x !== id); continue; }
-        await this.run('反映の要求', { 投稿ID: id });
+      // 直した投稿の書き込みが失敗したまま残っているもの（記録の状態では見分けられない。計画の穴）
+      for (const id of [...this.state.再送書く]) {
+        const p = posts()[id];
+        if (!p || p.状態 !== '投稿済') this.state.再送書く = this.state.再送書く.filter((x) => x !== id);
+        else if (this.待っている('書込待ち', id)) await this.外部を実行({ 名前: 'Dropbox.書く', 引数: { 投稿ID: id } }); // 待ちは残っているので、書き込みだけやり直す
+        else await this.run('反映の要求', { 投稿ID: id });
       }
       for (const id of [...this.state.再送消す]) await this.外部を実行({ 名前: 'Dropbox.消す', 引数: { 投稿ID: id } });
       await this.idle();
+      const 取り込む処理 = new Set(steps.filter((s) => s.種別 === '外から').map((s) => s.処理));
+      if (取り込む処理.size) await this.取り込む(取り込む処理);
     }
-    async 取り込む() {
+    async 取り込む(許す) {
       let list;
       const 記録済み = new Set(Object.values(this.state.保存.投稿 || {}).filter((p) => p.記録 === '記録済').map((p) => p.投稿ID));
       try {
@@ -302,8 +310,8 @@
         }
         for (const l of r.リンク || []) if (!this.state.部品[l]) this.state.部品[l] = { 種類: 'link', url: (r.リンク先 || {})[l] || '' };
         if (!local) {
-          await this.run('投稿の取り込み', { 本文: r.本文, 添付: r.添付 || [], リンク: r.リンク || [], 書いた日時: r.書いた日時, 操作日時: r.最後に操作した日時 }, id);
-        } else if ((local.状態 === '投稿済' || local.状態 === '削除済') && r.最後に操作した日時 > local.最後に操作した日時) {
+          if (許す.has('投稿の取り込み')) await this.run('投稿の取り込み', { 本文: r.本文, 添付: r.添付 || [], リンク: r.リンク || [], 書いた日時: r.書いた日時, 操作日時: r.最後に操作した日時 }, id);
+        } else if (許す.has('直しの取り込み') && (local.状態 === '投稿済' || local.状態 === '削除済') && r.最後に操作した日時 > local.最後に操作した日時) {
           await this.run('直しの取り込み', { 投稿ID: id, 直し日時: r.最後に操作した日時, 本文: r.本文 });
         }
         this.state.改訂[id] = rev;
@@ -311,7 +319,7 @@
       // 別の端末で消えた（Dropboxから無くなった）投稿を取り込む。確かに記録済みだったものだけ見る
       for (const id of 記録済み) {
         const p = this.state.保存.投稿[id];
-        if (!remoteIds.has(id) && p && p.状態 === '投稿済' && p.記録 === '記録済') {
+        if (許す.has('消しの取り込み') && !remoteIds.has(id) && p && p.状態 === '投稿済' && p.記録 === '記録済') {
           await this.run('消しの取り込み', { 投稿ID: id, 操作日時: this.now() });
         }
       }

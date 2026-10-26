@@ -125,6 +125,7 @@ class Checker:
         self.check_flows()
         self.check_queries()
         self.check_triggers()
+        self.check_events()
         self.check_states()
         self.check_invariants()
         order = {ERROR: 0, QUESTION: 1, WARN: 2}
@@ -289,6 +290,35 @@ class Checker:
                     self.d(ERROR, "トリガ", where, f"行き先の処理 {dest} の入力（名前と型）が、トリガの引数と合いません")
             if tg.name not in waited:
                 self.d(WARN, "トリガ", where, "どのフローからも「待つ」で作られていません")
+
+    def check_events(self):
+        """出来事の検査。「各」は、問い合わせが返すデータ1件ずつに、その識別子だけを入力にもつ処理を起こす。"""
+        names = [e.name for e in self.p.events]
+        for ev in self.p.events:
+            where = f"出来事 {ev.name}"
+            if names.count(ev.name) > 1:
+                self.d(ERROR, "名前", where, "同じ名前の出来事が複数あります")
+            if not ev.steps:
+                self.d(WARN, "出来事", where, "起こす処理がありません")
+            for kind, qn, pn in ev.steps:
+                proc = self.procs.get(pn)
+                if proc is None:
+                    self.d(ERROR, "出来事", where, f"起こす処理「{pn}」が未定義です")
+                    continue
+                if kind != "各":
+                    continue
+                q = self.queries.get(qn)
+                if q is None:
+                    self.d(ERROR, "出来事", where, f"問い合わせ「{qn}」が未定義です")
+                    continue
+                if any(not t.optional for _, t in q.inputs):
+                    self.d(ERROR, "出来事", where, f"問い合わせ {qn} は入力が要るので、出来事からは呼べません（任意の入力だけにしてください）")
+                dt = self.data.get(q.target)
+                if dt is None:
+                    continue
+                key = self.key_field(dt.name)
+                if [(n, show_type(t)) for n, t in proc.inputs] != [(key.name, "ID")]:
+                    self.d(ERROR, "出来事", where, f"「各 {qn}」は {dt.name} の {key.name} だけを渡すので、処理 {pn} の入力は「{key.name}: ID」だけにしてください")
 
     def check_states(self):
         for s in self.p.states:

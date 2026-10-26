@@ -1094,6 +1094,26 @@ pub fn 圏外で見る(ctx: &圏外で見る文脈, 保存: &保存, 入力: &�
     行.into_iter().map(|r| r.投稿ID.clone()).collect()
 }
 
+// ---- 問い合わせ 未反映の投稿（読むだけ） ----
+pub struct 未反映の投稿入力 {
+}
+impl 未反映の投稿入力 {
+    pub fn 検査(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
+pub struct 未反映の投稿文脈 {
+}
+pub fn 未反映の投稿(ctx: &未反映の投稿文脈, 保存: &保存, 入力: &未反映の投稿入力) -> Vec<String> {
+    let mut 行: Vec<&投稿> = 保存.投稿.values().filter(|r| {
+        if !(r.状態 == 投稿状態::投稿済) { return false; }
+        if !(r.記録 == 記録状態::端末保存済) { return false; }
+        true
+    }).collect();
+    行.sort_by(|a, b| a.書いた日時.cmp(&b.書いた日時).then(a.投稿ID.cmp(&b.投稿ID)));
+    行.into_iter().map(|r| r.投稿ID.clone()).collect()
+}
+
 // 【フロー】：結果の種類ごとの行き先。match の網羅は Rust が検査する。
 pub fn 投稿_投稿する(r: &投稿結果) -> 行き先 {
     match r {

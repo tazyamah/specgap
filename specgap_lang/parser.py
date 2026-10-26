@@ -102,6 +102,8 @@ class Parser:
                 p.triggers.append(self.trigger(line))
             elif kw == "問い合わせ":
                 p.queries.append(self.query(line))
+            elif kw == "出来事":
+                p.events.append(self.event(line))
             else:
                 raise ParseError(f"未知の定義「{kw}」です", line)
             self.skip_nl()
@@ -512,6 +514,23 @@ class Parser:
                 raise self.err(f"問い合わせの中に「{kw}」は書けません")
             self.end_line()
         return q
+
+    # ---- 出来事（外の出来事をきっかけに処理を起こす） ----
+    def event(self, line) -> Event:
+        ev = Event(self.name(), line=line)
+        self.block_open()
+        while not self.accept("}"):
+            kw = self.name()
+            if kw == "各":
+                q = self.name()
+                self.expect("→")
+                ev.steps.append(("各", q, self.name()))
+            elif kw == "外から":
+                ev.steps.append(("外から", "", self.name()))
+            else:
+                raise self.err("出来事の中は「各 問い合わせ → 処理」か「外から 処理」です")
+            self.end_line()
+        return ev
 
     # ---- トリガ ----
     UNITS = {"秒": 1, "分": 60, "時間": 3600, "日": 86400}

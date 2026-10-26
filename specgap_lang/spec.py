@@ -76,6 +76,7 @@ def build(ck: Checker) -> dict:
     spec["処理"] = procs
     spec["問い合わせ"] = [query_rows(q) for q in p.queries]
     spec["トリガ"] = [(tg.name, f"{k} {fmt_cause(k, key)}", d) for tg in p.triggers for k, key, d in tg.causes]
+    spec["出来事"] = [(ev.name, (f"各 {q}" if k == "各" else "外から"), d) for ev in p.events for k, q, d in ev.steps]
     spec["不変条件"] = [text for text, _ in ck.invariant_status]
     spec["指定"] = [(f"{x['処理']}.丸め", f"{m}({u})") for x in procs for m, u in x["丸め"]]
     spec["実現"] = [(f"{d.name}.{f.name}", phys(f.type)) for d in p.data for f in d.fields if f.type.kind in ("整数", "金額")]
@@ -102,6 +103,9 @@ def render(ck: Checker, spec: dict, name="") -> str:
             out.append(f"| {x['問い合わせ']} | {', '.join(x['入力'])} | {', '.join(x['読む'])} | {', '.join(x['条件'])} | {x['並び']} | {x['先頭']} |")
     out += ["", "## トリガ", "", "| トリガ | ◆要因 | ◆行き先 |", "|---|---|---|"]
     out += [f"| {a} | {b} | {c} |" for a, b, c in spec["トリガ"]]
+    if spec["出来事"]:
+        out += ["", "## 出来事（外の出来事をきっかけに起こす処理）", "", "| 出来事 | ◆起こし方 | ◆処理 |", "|---|---|---|"]
+        out += [f"| {a} | {b} | {c} |" for a, b, c in spec["出来事"]]
     out += ["", "## 不変条件", "", "| ◆内容 | 検査の結果 |", "|---|---|"]
     for text, rows in ck.invariant_status:
         out.append(f"| {text} | " + "／".join(f"{p}: {s}" for p, s in rows) + " |")
