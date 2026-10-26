@@ -9,6 +9,7 @@
   questions[] id, text, usecase(任意), status(open|unspec|answered), answer   未解決の問い（unspec＝意図的に未規定）
   extras[]    id, text, from_usecase, kind(runtime|constraint|quality|other)    返答に混ざっていた付加情報の置き場
   runtime{}   R1..R7 の答え（値と来歴）
+  screens[]   id, name, device(共通|スマホ|PC), usecases[], parts[], states[{name, shows}], actions[{when, then, judgment}], events[{when, then, judgment}]   画面の動き（見せるもの・状態ごとの表示・押したらどうなるか・開いた／つながったなどの出来事で起こること）
   judgments[] id, rule, sources[], who, when    判断（J）。AI が解釈した**ルール1つにつき1件**。sources は元の発言（複数可。1つの発言から複数のJ、複数の発言から1つのJもある）
 """
 import json
@@ -35,7 +36,7 @@ def runtime_status(r: dict) -> str:
 
 
 def new_ledger(title: str) -> dict:
-    return {"title": title, "summary": "", "out_of_scope": [], "usecases": [], "questions": [], "extras": [], "runtime": {}, "judgments": []}
+    return {"title": title, "summary": "", "out_of_scope": [], "usecases": [], "questions": [], "extras": [], "runtime": {}, "screens": [], "judgments": []}
 
 
 def load(path) -> dict:
@@ -100,6 +101,14 @@ def status(led: dict) -> tuple[list[str], bool]:
                 todo.append("動作要件 R1（動作プラットフォーム）は未規定にできません。確定させてください")
             elif st == "answered" and not r.get("value"):
                 todo.append(f"動作要件 {k}: answered なのに値が空です")
+    if led["usecases"] and not todo:
+        r7 = led["runtime"].get("R7", {})
+        if runtime_status(r7) == "answered" and "画面" in (r7.get("value") or "") and not led.get("screens"):
+            todo.append("画面の動き（screens）：見せるもの、状態ごとの表示、押したらどうなるか、開いた・つながったなどの出来事で起こること")
+        for sc in led.get("screens", []):
+            for key, label in (("parts", "見せるもの"), ("states", "状態ごとの表示"), ("actions", "押したらどうなるか")):
+                if not sc.get(key):
+                    todo.append(f"画面 {sc['id']} {sc.get('name', '')}: {label}が未記入")
     return todo, bool(led["usecases"]) and not todo
 
 
@@ -130,6 +139,13 @@ def render(led: dict) -> str:
         out += [""]
     out += ["## C4. 未解決の問い", "", "| ID | 問い | 状態 | 答え |", "|---|---|---|---|"]
     out += [f"| {q['id']} | {q['text']} | {q.get('status', 'open')} | {q.get('answer', '')} |" for q in led["questions"]] or []
+    out += ["", "## C6. 画面の動き（見せるもの・状態ごとの表示・押したら・出来事で）", ""]
+    for sc in led.get("screens", []):
+        out += [f"### {sc['id']} {sc.get('name', '')}（{sc.get('device', '共通')}／ユースケース: {'、'.join(sc.get('usecases', []))}）", "", "見せるもの: " + "、".join(sc.get("parts", [])), ""]
+        out += ["| 状態 | 見せるもの |", "|---|---|"] + [f"| {x['name']} | {x['shows']} |" for x in sc.get("states", [])] + [""]
+        out += ["| きっかけ | 起こること | 判断 |", "|---|---|---|"]
+        out += [f"| 押す：{x['when']} | {x['then']} | {x.get('judgment', '')} |" for x in sc.get("actions", [])]
+        out += [f"| 出来事：{x['when']} | {x['then']} | {x.get('judgment', '')} |" for x in sc.get("events", [])] + [""]
     out += ["", "## C5. 判断の記録", "", "| ID | ルール（AIの解釈） | 元の発言 | 誰が | いつ |", "|---|---|---|---|---|"]
     out += [f"| {j['id']} | {j['rule']} | {' ／ '.join(j.get('sources', []))} | {j.get('who', '')} | {j.get('when', '')} |" for j in led["judgments"]]
     return "\n".join(out) + "\n"
