@@ -35,11 +35,11 @@
       const rev = 'r' + (++this.rev);
       this.posts.set(obj.投稿ID, { rev, json: JSON.stringify(obj) });
     }
-    他端末で直す(id, 本文, 時刻) {
+    他端末で直す(id, 本文, 時刻, 追加 = {}) {
       const v = this.posts.get(id);
       if (!v) return false;
       const o = JSON.parse(v.json);
-      o.本文 = 本文; o.最後に操作した日時 = 時刻;
+      o.本文 = 本文; o.最後に操作した日時 = 時刻; Object.assign(o, 追加);
       this.posts.set(id, { rev: 'r' + (++this.rev), json: JSON.stringify(o) });
       return true;
     }

@@ -199,7 +199,7 @@ fn main() {
         let mut 保存 = 保存::default();
         保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "B".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に操作した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::記録済 });
         let ctx = 直しの取り込み文脈 {  };
-        let 入力 = 直しの取り込み入力 { 投稿ID: "N1".to_string(), 直し日時: 1300i64, 本文: "C".to_string() };
+        let 入力 = 直しの取り込み入力 { 投稿ID: "N1".to_string(), 直し日時: 1300i64, 本文: "C".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]) };
         match 入力.検査() {
             Err(e) => println!("EX14\t入力不正({})\t\t", e),
             Ok(()) => {
@@ -214,7 +214,7 @@ fn main() {
         let mut 保存 = 保存::default();
         保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "C".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に操作した日時: 1300i64, 状態: 投稿状態::投稿済, 記録: 記録状態::記録済 });
         let ctx = 直しの取り込み文脈 {  };
-        let 入力 = 直しの取り込み入力 { 投稿ID: "N1".to_string(), 直し日時: 1200i64, 本文: "B".to_string() };
+        let 入力 = 直しの取り込み入力 { 投稿ID: "N1".to_string(), 直し日時: 1200i64, 本文: "B".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]) };
         match 入力.検査() {
             Err(e) => println!("EX15\t入力不正({})\t\t", e),
             Ok(()) => {
@@ -349,7 +349,7 @@ fn main() {
         let mut 保存 = 保存::default();
         保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に操作した日時: 1000i64, 状態: 投稿状態::削除済, 記録: 記録状態::記録済 });
         let ctx = 直しの取り込み文脈 {  };
-        let 入力 = 直しの取り込み入力 { 投稿ID: "N1".to_string(), 直し日時: 1600i64, 本文: "直した".to_string() };
+        let 入力 = 直しの取り込み入力 { 投稿ID: "N1".to_string(), 直し日時: 1600i64, 本文: "直した".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]) };
         match 入力.検査() {
             Err(e) => println!("EX24\t入力不正({})\t\t", e),
             Ok(()) => {
@@ -364,7 +364,7 @@ fn main() {
         let mut 保存 = 保存::default();
         保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に操作した日時: 1000i64, 状態: 投稿状態::削除済, 記録: 記録状態::記録済 });
         let ctx = 直しで戻す文脈 {  };
-        let 入力 = 直しで戻す入力 { 投稿ID: "N1".to_string(), 直し日時: 1600i64, 本文: "直した".to_string() };
+        let 入力 = 直しで戻す入力 { 投稿ID: "N1".to_string(), 直し日時: 1600i64, 本文: "直した".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]) };
         match 入力.検査() {
             Err(e) => println!("EX25\t入力不正({})\t\t", e),
             Ok(()) => {
@@ -379,7 +379,7 @@ fn main() {
         let mut 保存 = 保存::default();
         保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に操作した日時: 1800i64, 状態: 投稿状態::削除済, 記録: 記録状態::記録済 });
         let ctx = 直しで戻す文脈 {  };
-        let 入力 = 直しで戻す入力 { 投稿ID: "N1".to_string(), 直し日時: 1600i64, 本文: "直した".to_string() };
+        let 入力 = 直しで戻す入力 { 投稿ID: "N1".to_string(), 直し日時: 1600i64, 本文: "直した".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]) };
         match 入力.検査() {
             Err(e) => println!("EX26\t入力不正({})\t\t", e),
             Ok(()) => {
@@ -555,6 +555,21 @@ fn main() {
         match 入力.検査() {
             Err(e) => println!("EX39\t入力不正({})\t\t", e),
             Ok(()) => println!("EX39\t一覧({})\t\t", 一覧を見る(&ctx, &保存, &入力).join(",")),
+        }
+    }
+    {
+        let mut 保存 = 保存::default();
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "B".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に操作した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::記録済 });
+        let ctx = 直しの取り込み文脈 {  };
+        let 入力 = 直しの取り込み入力 { 投稿ID: "N1".to_string(), 直し日時: 1300i64, 本文: "B".to_string(), 添付: BTreeSet::from(["F1".to_string()]), リンク: BTreeSet::from(["L1".to_string()]) };
+        match 入力.検査() {
+            Err(e) => println!("EX40\t入力不正({})\t\t", e),
+            Ok(()) => {
+                let 出力 = 直しの取り込み(&ctx, &保存, &入力);
+                let 前 = 保存.clone();
+                保存.適用(出力.書込.clone());
+                println!("EX40\t{}\t{}\t{}", 出力.結果.表示(), 前.差分(&保存).join(";"), 出力.外部.iter().map(|e| e.表示()).collect::<Vec<_>>().join(";"));
+            }
         }
     }
 }

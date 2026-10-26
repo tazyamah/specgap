@@ -83,8 +83,18 @@ const post = async (page, t) => {
     await page.click('#btn-refresh');
     await page.waitForFunction(() => document.querySelector('#list .post .body').textContent.includes('別の端末で直した'));
     ok('別の端末の直しを取り込む');
+    // 別の端末が直したリンクも取り込む（前の直しより後の時刻になるように待つ）
+    await page.waitForTimeout(1100);
+    await page.evaluate(() => {
+      const id = [...window.mock.posts.keys()].pop();
+      window.mock.他端末で直す(id, '別の端末でリンクも直した', window.engine.now(), { リンク: ['lzz'], リンク先: { lzz: 'https://example.org/x' } });
+    });
+    await page.waitForTimeout(1100); // 直しの時刻より後に、更新するように
+    await page.click('#btn-refresh');
+    await page.waitForSelector('#list .post .links a[href="https://example.org/x"]');
+    ok('別の端末で直したリンク（添付も同じ）を取り込む');
     await page.click('#d-other-del');
-    await page.waitForTimeout(1100); // 消えたことに気づく時刻が、直しの時刻より後になるように
+    await page.waitForTimeout(1500); // 消えたことに気づく時刻が、直しの時刻より後になるように
     await page.click('#btn-refresh');
     await page.waitForFunction(() => document.querySelectorAll('#list .post').length === 1);
     ok('別の端末の消しを取り込む');
