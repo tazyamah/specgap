@@ -47,7 +47,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "図書館で本を借りた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::端末保存済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "図書館で本を借りた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::端末保存済 });
         let ctx = 反映の要求文脈 {  };
         let 入力 = 反映の要求入力 { 投稿ID: "N1".to_string() };
         match 入力.検査() {
@@ -62,7 +62,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "消した投稿".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::削除済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "消した投稿".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::削除済, 記録: 記録状態::端末保存済 });
         let ctx = 反映の要求文脈 {  };
         let 入力 = 反映の要求入力 { 投稿ID: "N1".to_string() };
         match 入力.検査() {
@@ -77,7 +77,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "図書館で本を借りた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::端末保存済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "図書館で本を借りた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::端末保存済 });
         let ctx = 記録の確定文脈 {  };
         let 入力 = 記録の確定入力 { 投稿ID: "N1".to_string() };
         match 入力.検査() {
@@ -92,7 +92,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "直した後の確定".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1100i64, 状態: 投稿状態::記録済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "直した後の確定".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1100i64, 状態: 投稿状態::投稿済, 記録: 記録状態::記録済 });
         let ctx = 記録の確定文脈 {  };
         let 入力 = 記録の確定入力 { 投稿ID: "N1".to_string() };
         match 入力.検査() {
@@ -107,7 +107,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "保存できない".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::端末保存済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "保存できない".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::端末保存済 });
         let ctx = 記録失敗の表示文脈 {  };
         let 入力 = 記録失敗の表示入力 { 投稿ID: "N1".to_string() };
         match 入力.検査() {
@@ -122,7 +122,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "電車で書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::端末保存済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "電車で書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::端末保存済 });
         let ctx = 未反映の通知文脈 {  };
         let 入力 = 未反映の通知入力 { 投稿ID: "N1".to_string() };
         match 入力.検査() {
@@ -137,7 +137,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "もう記録済".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::記録済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "もう記録済".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::記録済 });
         let ctx = 未反映の通知文脈 {  };
         let 入力 = 未反映の通知入力 { 投稿ID: "N1".to_string() };
         match 入力.検査() {
@@ -152,7 +152,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "ばなな".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::記録済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "ばなな".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::記録済 });
         let ctx = 直す文脈 { 現在: 2000i64 };
         let 入力 = 直す入力 { 投稿ID: "N1".to_string(), 本文: "バナナ".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]) };
         match 入力.検査() {
@@ -167,7 +167,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "ばなな".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::記録済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "ばなな".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::記録済 });
         let ctx = 直す文脈 { 現在: 2000i64 };
         let 入力 = 直す入力 { 投稿ID: "N1".to_string(), 本文: "".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]) };
         match 入力.検査() {
@@ -182,7 +182,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "消した投稿".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::削除済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "消した投稿".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::削除済, 記録: 記録状態::記録済 });
         let ctx = 直す文脈 { 現在: 2000i64 };
         let 入力 = 直す入力 { 投稿ID: "N1".to_string(), 本文: "直したい".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]) };
         match 入力.検査() {
@@ -197,7 +197,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "B".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::記録済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "B".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::記録済 });
         let ctx = 直しの取り込み文脈 {  };
         let 入力 = 直しの取り込み入力 { 投稿ID: "N1".to_string(), 直し日時: 1300i64, 本文: "C".to_string() };
         match 入力.検査() {
@@ -212,7 +212,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "C".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1300i64, 状態: 投稿状態::記録済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "C".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1300i64, 状態: 投稿状態::投稿済, 記録: 記録状態::記録済 });
         let ctx = 直しの取り込み文脈 {  };
         let 入力 = 直しの取り込み入力 { 投稿ID: "N1".to_string(), 直し日時: 1200i64, 本文: "B".to_string() };
         match 入力.検査() {
@@ -227,7 +227,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::記録済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::記録済 });
         let ctx = 消す文脈 {  };
         let 入力 = 消す入力 { 投稿ID: "N1".to_string() };
         match 入力.検査() {
@@ -242,7 +242,22 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::削除済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::投稿済, 記録: 記録状態::端末保存済 });
+        let ctx = 消す文脈 {  };
+        let 入力 = 消す入力 { 投稿ID: "N1".to_string() };
+        match 入力.検査() {
+            Err(e) => println!("EX17\t入力不正({})\t\t", e),
+            Ok(()) => {
+                let 出力 = 消す(&ctx, &保存, &入力);
+                let 前 = 保存.clone();
+                保存.適用(出力.書込.clone());
+                println!("EX17\t{}\t{}\t{}", 出力.結果.表示(), 前.差分(&保存).join(";"), 出力.外部.iter().map(|e| e.表示()).collect::<Vec<_>>().join(";"));
+            }
+        }
+    }
+    {
+        let mut 保存 = 保存::default();
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::削除済, 記録: 記録状態::記録済 });
         let ctx = 元に戻す文脈 {  };
         let 入力 = 元に戻す入力 { 投稿ID: "N1".to_string() };
         match 入力.検査() {
@@ -257,7 +272,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::完全削除済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::完全削除済, 記録: 記録状態::記録済 });
         let ctx = 元に戻す文脈 {  };
         let 入力 = 元に戻す入力 { 投稿ID: "N1".to_string() };
         match 入力.検査() {
@@ -272,7 +287,7 @@ fn main() {
     }
     {
         let mut 保存 = 保存::default();
-        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::削除済 });
+        保存.投稿.insert("N1".to_string(), 投稿 { 投稿ID: "N1".to_string(), 本文: "書いた".to_string(), 添付: BTreeSet::from([]), リンク: BTreeSet::from([]), 書いた日時: 1000i64, 最後に直した日時: 1000i64, 状態: 投稿状態::削除済, 記録: 記録状態::記録済 });
         let ctx = 完全に消す文脈 {  };
         let 入力 = 完全に消す入力 { 投稿ID: "N1".to_string() };
         match 入力.検査() {
