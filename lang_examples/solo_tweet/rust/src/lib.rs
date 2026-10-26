@@ -774,6 +774,77 @@ pub fn 完全に消す(ctx: &完全に消す文脈, 保存: &保存, 入力: &�
     return 完全に消す出力 { 結果: 完全削除結果::消した, 書込: 書込列, 外部: 外部列 };
 }
 
+// ---- 問い合わせ 一覧を見る（読むだけ） ----
+pub struct 一覧を見る入力 {
+    pub 件数: u64,
+}
+impl 一覧を見る入力 {
+    pub fn 検査(&self) -> Result<(), String> {
+        範囲検査("件数", self.件数 as i128, Some(1), None)?;
+        Ok(())
+    }
+}
+pub struct 一覧を見る文脈 {
+}
+pub fn 一覧を見る(ctx: &一覧を見る文脈, 保存: &保存, 入力: &一覧を見る入力) -> Vec<String> {
+    let mut 行: Vec<&投稿> = 保存.投稿.values().filter(|r| {
+        if !(r.状態 == 投稿状態::投稿済) { return false; }
+        true
+    }).collect();
+    行.sort_by(|a, b| b.書いた日時.cmp(&a.書いた日時).then(a.投稿ID.cmp(&b.投稿ID)));
+    行.truncate(入力.件数 as usize);
+    行.into_iter().map(|r| r.投稿ID.clone()).collect()
+}
+
+// ---- 問い合わせ 探す（読むだけ） ----
+pub struct 探す入力 {
+    pub 始め: Option<i64>,
+    pub 終わり: Option<i64>,
+    pub 単語: Option<String>,
+}
+impl 探す入力 {
+    pub fn 検査(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
+pub struct 探す文脈 {
+}
+pub fn 探す(ctx: &探す文脈, 保存: &保存, 入力: &探す入力) -> Vec<String> {
+    let mut 行: Vec<&投稿> = 保存.投稿.values().filter(|r| {
+        if !(r.状態 == 投稿状態::投稿済) { return false; }
+        if let Some(x) = &入力.始め { if !(r.書いた日時 >= *x) { return false; } }
+        if let Some(x) = &入力.終わり { if !(r.書いた日時 <= *x) { return false; } }
+        if let Some(x) = &入力.単語 { if !(r.本文.contains(x.as_str())) { return false; } }
+        true
+    }).collect();
+    行.sort_by(|a, b| b.書いた日時.cmp(&a.書いた日時).then(a.投稿ID.cmp(&b.投稿ID)));
+    行.into_iter().map(|r| r.投稿ID.clone()).collect()
+}
+
+// ---- 問い合わせ 圏外で見る（読むだけ） ----
+pub struct 圏外で見る入力 {
+    pub 件数: u64,
+}
+impl 圏外で見る入力 {
+    pub fn 検査(&self) -> Result<(), String> {
+        範囲検査("件数", self.件数 as i128, Some(1), None)?;
+        Ok(())
+    }
+}
+pub struct 圏外で見る文脈 {
+    pub 現在: i64,
+}
+pub fn 圏外で見る(ctx: &圏外で見る文脈, 保存: &保存, 入力: &圏外で見る入力) -> Vec<String> {
+    let mut 行: Vec<&投稿> = 保存.投稿.values().filter(|r| {
+        if !(r.状態 == 投稿状態::投稿済) { return false; }
+        if !(r.書いた日時 >= ctx.現在 - 86400) { return false; }
+        true
+    }).collect();
+    行.sort_by(|a, b| b.書いた日時.cmp(&a.書いた日時).then(a.投稿ID.cmp(&b.投稿ID)));
+    行.truncate(入力.件数 as usize);
+    行.into_iter().map(|r| r.投稿ID.clone()).collect()
+}
+
 // 【フロー】：結果の種類ごとの行き先。match の網羅は Rust が検査する。
 pub fn 投稿_投稿する(r: &投稿結果) -> 行き先 {
     match r {

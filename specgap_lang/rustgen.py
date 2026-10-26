@@ -117,9 +117,66 @@ class Gen:
         self.results()
         for proc in self.p.processes:
             ProcGen(self, proc).emit()
+        for q in self.p.queries:
+            self.query(q)
         self.flows()
         self.triggers()
         return "\n".join(self.out) + "\n"
+
+    def query(self, q):
+        """問い合わせ（読むだけの処理）：保存を読み、条件・絞り込み・並びで選んだ対象のIDの列を返す。書込も外部作用も無い。"""
+        n = q.name
+        fields = {f.name: f for f in self.ck.data[q.target].fields}
+        key = self.key(q.target)
+        ins = dict(q.inputs)
+
+        def ty(t):
+            r = rust_type(t)
+            return f"Option<{r}>" if t.optional else r
+
+        self.w(f"// ---- 問い合わせ {n}（読むだけ） ----")
+        self.w(f"pub struct {n}入力 {{")
+        for name, t in q.inputs:
+            self.w(f"    pub {name}: {ty(t)},")
+        self.w("}")
+        self.w(f"impl {n}入力 {{\n    pub fn 検査(&self) -> Result<(), String> {{")
+        for name, t in q.inputs:
+            if t.kind in ("整数", "金額") and t.range:
+                x = f"*x as i128" if t.optional else f"self.{name} as i128"
+                chk = f'範囲検査("{name}", {x}, {opt(t.range.lo)}, {opt(t.range.hi)})?;'
+                self.w(f"        if let Some(x) = &self.{name} {{ {chk} }}" if t.optional else f"        {chk}")
+        self.w("        Ok(())\n    }\n}")
+        self.w(f"pub struct {n}文脈 {{")
+        for name, t in q.refs:
+            self.w(f"    pub {name}: {rust_type(t)},")
+        self.w("}")
+        self.w(f"pub fn {n}(ctx: &{n}文脈, 保存: &保存, 入力: &{n}入力) -> Vec<String> {{")
+        self.w(f"    let mut 行: Vec<&{q.target}> = 保存.{q.target}.values().filter(|r| {{")
+        for f, op, st in q.conds:
+            sname = fields[f].type.target
+            self.w(f"        if !(r.{f} {op} {sname}::{st}) {{ return false; }}")
+        for f, op, a in q.filters:
+            if op == "直近":
+                self.w(f"        if !(r.{f} >= ctx.現在 - {a}) {{ return false; }}")
+                continue
+            t = ins[a]
+            cond = {"以上": f"r.{f} >= *x", "以下": f"r.{f} <= *x", "含む": f"r.{f}.contains(x.as_str())"}[op]
+            if t.optional:
+                self.w(f"        if let Some(x) = &入力.{a} {{ if !({cond}) {{ return false; }} }}")
+            else:
+                self.w(f"        {{ let x = &入力.{a}; if !({cond}) {{ return false; }} }}")
+        self.w("        true\n    }).collect();")
+        if q.order:
+            f, d = q.order
+            a, b = ("b", "a") if d == "新しい順" else ("a", "b")
+            self.w(f"    行.sort_by(|a, b| {a}.{f}.cmp(&{b}.{f}).then(a.{key}.cmp(&b.{key})));")
+        else:
+            self.w(f"    行.sort_by(|a, b| a.{key}.cmp(&b.{key}));")
+        if q.limit:
+            t = ins[q.limit]
+            n_expr = f"入力.{q.limit}.map_or(行.len(), |x| x as usize)" if t.optional else f"入力.{q.limit} as usize"
+            self.w(f"    行.truncate({n_expr});")
+        self.w(f"    行.into_iter().map(|r| r.{key}.clone()).collect()\n}}\n")
 
     def states(self):
         for s in self.p.states:

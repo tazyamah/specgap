@@ -46,8 +46,8 @@ python -m specgap_lang interview render 台帳.json -o plan.md  # plan（①）�
 ## 会話から起こした2つ目の例（ひとり用つぶやき）
 
 `lang_examples/solo_tweet/`：会話の台帳（ledger.json、判断J1〜J48）→ 計画書の節1〜7（plan_spec.md）→ コード（solo_tweet.sgl）→ 検査・突合・Rust生成（rust/）。
-計画書とコードは機械で突合し、具体例19件を生成した Rust で実行して一致を確かめています（`python -m specgap_lang compare lang_examples/solo_tweet/solo_tweet.sgl lang_examples/solo_tweet/plan_spec.md`）。
-この例のために、型に「文字列」「日時」、条件に「かつ」を足しました。一覧を見る・探すなどの読むだけの処理は、問い合わせの書き方がまだ無く、コードにしていません。
+計画書とコードは機械で突合し、具体例を生成した Rust で実行して一致を確かめています（`python -m specgap_lang compare lang_examples/solo_tweet/solo_tweet.sgl lang_examples/solo_tweet/plan_spec.md`）。
+この例のために、型に「文字列」「日時」、条件に「かつ」、読むだけの処理に「問い合わせ」（対象・条件・絞り込み・並び・先頭）を足しました。具体例は35件。
 
 ## 検査が見つけるもの
 

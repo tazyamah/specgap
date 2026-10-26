@@ -100,6 +100,8 @@ class Parser:
                 p.flows.append(self.flow(line))
             elif kw == "トリガ":
                 p.triggers.append(self.trigger(line))
+            elif kw == "問い合わせ":
+                p.queries.append(self.query(line))
             else:
                 raise ParseError(f"未知の定義「{kw}」です", line)
             self.skip_nl()
@@ -455,6 +457,61 @@ class Parser:
             entries.append((proc, routes))
             self.end_line()
         return Flow(name, entries, line)
+
+    # ---- 問い合わせ（読むだけの処理） ----
+    def query(self, line) -> Query:
+        q = Query(self.name(), line=line)
+        self.block_open()
+
+        def typed():
+            n = self.name()
+            self.expect(":")
+            t = self.type()
+            if self.accept("任意"):
+                t.optional = True
+            return n, t
+
+        while not self.accept("}"):
+            kw = self.name()
+            if kw == "入力":
+                q.inputs += self.comma_list(typed)
+            elif kw == "参照":
+                q.refs += self.comma_list(typed)
+            elif kw == "対象":
+                q.target = self.name()
+            elif kw == "条件":
+                f = self.name()
+                op = self.next().val
+                if op not in ("==", "!="):
+                    raise self.err("問い合わせの条件は「項目 == 状態」か「項目 != 状態」の形です")
+                q.conds.append((f, op, self.name()))
+            elif kw == "絞り込み":
+                f = self.name()
+                op = self.name()
+                if op == "直近":
+                    n = self.num()
+                    unit = self.name()
+                    if unit not in self.UNITS:
+                        raise self.err(f"時間の単位「{unit}」は使えません（秒・分・時間・日）")
+                    q.filters.append((f, op, str(n * self.UNITS[unit])))
+                elif op in ("以上", "以下", "含む"):
+                    q.filters.append((f, op, self.name()))
+                else:
+                    raise self.err(f"絞り込みの種類「{op}」は使えません（以上・以下・含む・直近）")
+            elif kw == "並び":
+                f = self.name()
+                d = self.name()
+                if d not in ("新しい順", "古い順"):
+                    raise self.err("並びは「新しい順」か「古い順」です")
+                q.order = (f, d)
+            elif kw == "先頭":
+                q.limit = self.name()
+            elif kw == "読む":
+                q.reads += self.comma_list(self.access)
+            else:
+                raise self.err(f"問い合わせの中に「{kw}」は書けません")
+            self.end_line()
+        return q
 
     # ---- トリガ ----
     UNITS = {"秒": 1, "分": 60, "時間": 3600, "日": 86400}

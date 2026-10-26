@@ -65,10 +65,11 @@ def kv(text: str) -> dict[str, str]:
 
 
 def example_code(ck: Checker, row: dict) -> str:
-    proc = ck.procs.get(row["処理"].strip())
+    q = ck.queries.get(row["処理"].strip())
+    proc = q or ck.procs.get(row["処理"].strip())
     if proc is None:
         raise ExampleError(f"処理「{row['処理']}」がコードにありません")
-    info = ck.infos[proc.name]
+    info = ck.infos[proc.name] if q is None else None
     L = ["    {", "        let mut 保存 = 保存::default();"]
     ctx = {}
     for item in split_top(row.get("前提", ""), ";"):
@@ -97,7 +98,7 @@ def example_code(ck: Checker, row: dict) -> str:
         if name not in ctx:
             raise ExampleError(f"前提に 参照「{name}」がありません")
         fields.append(f"{name}: {lit(t, ctx[name], ck)}")
-    for d in sorted(set(info.new_ids)):
+    for d in sorted(set(info.new_ids)) if info else []:
         if f"新{d}ID" not in ctx:
             raise ExampleError(f"前提に 採番「新{d}ID」がありません")
         fields.append(f'新{d}ID: "{ctx[f"新{d}ID"]}".to_string()')
@@ -106,10 +107,23 @@ def example_code(ck: Checker, row: dict) -> str:
     ins = []
     for name, t in proc.inputs:
         if name not in given:
+            if getattr(t, "optional", False):
+                ins.append(f"{name}: None")
+                continue
             raise ExampleError(f"入力に「{name}」がありません")
-        ins.append(f"{name}: {lit(t, given[name], ck)}")
+        v = lit(t, given[name], ck)
+        ins.append(f"{name}: Some({v})" if getattr(t, "optional", False) else f"{name}: {v}")
     L.append(f"        let 入力 = {proc.name}入力 {{ {', '.join(ins)} }};")
     eid = row["ID"].strip()
+    if q is not None:
+        L += [
+            "        match 入力.検査() {",
+            f'            Err(e) => println!("{eid}\\t入力不正({{}})\\t\\t", e),',
+            f'            Ok(()) => println!("{eid}\\t一覧({{}})\\t\\t", {q.name}(&ctx, &保存, &入力).join(",")),',
+            "        }",
+            "    }",
+        ]
+        return "\n".join(L)
     L += [
         "        match 入力.検査() {",
         f'            Err(e) => println!("{eid}\\t入力不正({{}})\\t\\t", e),',

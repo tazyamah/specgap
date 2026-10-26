@@ -316,3 +316,26 @@ def test_つぶやきの削除猶予は30秒で_書込待ちは24時間():
     assert ("削除猶予", "期限 現在+30秒", "完全に消す") in spec["トリガ"]
     assert ("書込待ち", "期限 現在+24時間", "未反映の通知") in spec["トリガ"]
 
+
+
+# ---- 問い合わせ（読むだけの処理） ----
+def test_問い合わせの宣言と本体のずれを検出する():
+    ck = chk(mutate(TW_CODE, "  読む 投稿.状態, 投稿.書いた日時, 投稿.本文\n}", "  読む 投稿.状態, 投稿.書いた日時\n}"))
+    assert any("投稿.本文" in m for m in msgs(ck, ERROR))
+
+
+def test_問い合わせの絞り込みの入力が無いと止まる():
+    ck = chk(mutate(TW_CODE, "絞り込み 本文 含む 単語", "絞り込み 本文 含む 語句"))
+    assert any("語句" in m for m in msgs(ck, ERROR))
+
+
+def test_問い合わせの条件が計画と違うと突合で見つかる():
+    code = mutate(TW_CODE, "  条件 状態 == 投稿済\n  並び 書いた日時 新しい順\n  先頭 件数\n  読む 投稿.状態, 投稿.書いた日時\n}\n\n// 日付は", "  条件 状態 != 削除済\n  並び 書いた日時 新しい順\n  先頭 件数\n  読む 投稿.状態, 投稿.書いた日時\n}\n\n// 日付は")
+    fs = compare_static(build(chk(code)), read_plan(TW_PLAN))
+    assert any(f.kind == DIFF and "一覧を見る" in f.where for f in fs)
+
+
+def test_圏外の一覧は直近24時間だけ():
+    spec = build(chk(TW_CODE))
+    q = next(x for x in spec["問い合わせ"] if x["問い合わせ"] == "圏外で見る")
+    assert "書いた日時 直近 24時間" in q["条件"]

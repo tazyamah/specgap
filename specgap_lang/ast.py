@@ -17,6 +17,7 @@ class Type:
     key: Optional[str] = None  # 写像のキーのデータ名
     value: Optional["Type"] = None
     unit: Optional[str] = None
+    optional: bool = False  # 問い合わせの入力が「任意」（指定が無ければ、その絞り込みをしない）
 
 
 @dataclass
@@ -103,6 +104,21 @@ class Process:
 
 
 @dataclass
+class Query:
+    """読むだけの処理（問い合わせ）。対象のデータの一覧を、条件・絞り込み・並びで返す。"""
+    name: str
+    inputs: list[tuple[str, "Type"]] = field(default_factory=list)
+    refs: list[tuple[str, "Type"]] = field(default_factory=list)
+    target: str = ""
+    conds: list[tuple[str, str, str]] = field(default_factory=list)  # (項目, == か !=, 状態名)
+    filters: list[tuple[str, str, str]] = field(default_factory=list)  # (項目, 以上／以下／含む／直近, 入力名／秒数)
+    order: Optional[tuple[str, str]] = None  # (項目, 新しい順／古い順)
+    limit: Optional[str] = None  # 先頭 N 件の N を持つ入力名
+    reads: list[str] = field(default_factory=list)
+    line: int = 0
+
+
+@dataclass
 class Program:
     data: list[Data] = field(default_factory=list)
     states: list[State] = field(default_factory=list)
@@ -113,6 +129,7 @@ class Program:
     processes: list[Process] = field(default_factory=list)
     flows: list[Flow] = field(default_factory=list)
     triggers: list[Trigger] = field(default_factory=list)
+    queries: list[Query] = field(default_factory=list)
 
 
 # ---- 式 ----

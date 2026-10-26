@@ -98,6 +98,8 @@ class Checker:
         self.effects = {e.name: e for e in prog.effects}
         self.procs = {x.name: x for x in prog.processes}
         self.triggers = {x.name: x for x in prog.triggers}
+        self.queries = {x.name: x for x in prog.queries}
+        self.query_reads: dict[str, set] = {}
         self.variants = {}
         for s in prog.states:
             for v in [s.initial, *s.middle, *s.final]:
@@ -121,6 +123,7 @@ class Checker:
         for proc in self.p.processes:
             self.infos[proc.name] = ProcChecker(self, proc).run()
         self.check_flows()
+        self.check_queries()
         self.check_triggers()
         self.check_states()
         self.check_invariants()
@@ -180,6 +183,66 @@ class Checker:
         for name in self.procs:
             if name not in in_flow:
                 self.d(WARN, "行き先", f"処理 {name}", "どのフローにも入っていません")
+
+    def check_queries(self):
+        """問い合わせ（読むだけの処理）の検査。使う項目の型、入力との型の一致、宣言した「読む」と実際のずれ。"""
+        for q in self.p.queries:
+            where = f"問い合わせ {q.name}"
+            if q.name in self.procs:
+                self.d(ERROR, "名前", where, "同じ名前の処理があります")
+            dt = self.data.get(q.target)
+            if dt is None:
+                self.d(ERROR, "名前", where, f"対象のデータ「{q.target}」が未定義です")
+                continue
+            fields = {f.name: f for f in dt.fields}
+            used, ins = set(), dict(q.inputs)
+
+            def field_of(fn):
+                if fn not in fields:
+                    self.d(ERROR, "名前", where, f"データ {dt.name} に項目「{fn}」がありません")
+                    return None
+                used.add(f"{dt.name}.{fn}")
+                return fields[fn]
+
+            for fn, op, st in q.conds:
+                f = field_of(fn)
+                if f is not None and (f.type.kind != "名前" or st not in [x for s in self.p.states if s.name == f.type.target for x in [s.initial, *s.middle, *s.final]]):
+                    self.d(ERROR, "型", where, f"条件「{fn} {op} {st}」: 「{st}」は項目 {fn} の状態ではありません")
+            for fn, op, arg in q.filters:
+                f = field_of(fn)
+                if f is None:
+                    continue
+                if op == "直近":
+                    if f.type.kind != "日時":
+                        self.d(ERROR, "型", where, f"「{fn} 直近」は日時の項目にだけ使えます")
+                    if not any(n == "現在" for n, _ in q.refs):
+                        self.d(ERROR, "名前", where, "「直近」を使うには、参照 現在 が必要です")
+                    continue
+                t = ins.get(arg)
+                if t is None:
+                    self.d(ERROR, "名前", where, f"絞り込みの入力「{arg}」が、入力にありません")
+                    continue
+                if op == "含む" and not (f.type.kind == "文字列" and t.kind == "文字列"):
+                    self.d(ERROR, "型", where, f"「{fn} 含む {arg}」は文字列どうしにだけ使えます")
+                if op in ("以上", "以下") and not (f.type.kind == t.kind and f.type.kind in ("日時", "整数", "金額")):
+                    self.d(ERROR, "型", where, f"「{fn} {op} {arg}」は同じ種類の数・日時どうしにだけ使えます")
+            if q.order:
+                f = field_of(q.order[0])
+                if f is not None and f.type.kind not in ("日時", "整数", "金額"):
+                    self.d(ERROR, "型", where, f"並びの項目「{q.order[0]}」は数か日時である必要があります")
+            if q.limit is not None:
+                t = ins.get(q.limit)
+                if t is None or t.kind != "整数":
+                    self.d(ERROR, "型", where, f"先頭の件数「{q.limit}」は、整数の入力である必要があります")
+            for n, t in q.inputs:
+                if not t.optional and not any(n == a for _, _, a in q.filters) and n != q.limit:
+                    self.d(WARN, "宣言", where, f"入力「{n}」はどこにも使われていません")
+            declared, actual = set(q.reads), used
+            for x in sorted(actual - declared):
+                self.d(ERROR, "宣言", where, f"問い合わせは「{x}」を読むのに、宣言（読む）にありません")
+            for x in sorted(declared - actual):
+                self.d(ERROR, "宣言", where, f"宣言（読む）に「{x}」がありますが、使っていません")
+            self.query_reads[q.name] = actual
 
     def check_wait(self, where, proc, trig):
         tg = self.triggers.get(trig)
